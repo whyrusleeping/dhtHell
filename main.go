@@ -71,12 +71,16 @@ const (
 	PING
 	GET
 	PUT
+	PROVIDE
+	FINDPROVIDE
 )
 
 var dhts []*dhtInfo
 var keys chan u.Key
+var provs chan u.Key
 func init() {
 	keys = make(chan u.Key, 1000)
+	provs = make(chan u.Key, 1000)
 }
 
 func hailMaryDHT(dh *dhtInfo) {
@@ -92,7 +96,7 @@ func hailMaryDHT(dh *dhtInfo) {
 
 	fmt.Println("DHT done with connects.")
 	for {
-		a := mrand.Intn(3) + 1
+		a := mrand.Intn(5) + 1
 		switch a {
 			case PING:
 				fmt.Println("ACTION: ping")
@@ -135,6 +139,28 @@ func hailMaryDHT(dh *dhtInfo) {
 					keys <- mk
 				}(k)
 				fmt.Println("ACTION: get finished")
+			case PROVIDE:
+				fmt.Println("ACTION: provide")
+				k := u.Key(_randString())
+				err := dh.dht.Provide(k)
+				if err != nil {
+					panic(err)
+				}
+				go func() {
+					time.Sleep(time.Second / 4)
+					provs <- k
+				}()
+				fmt.Println("ACTION: provide finished")
+			case FINDPROVIDE:
+				fmt.Println("ACTION: find provider")
+				k := <-provs
+				_,err := dh.dht.FindProviders(k, time.Second * 2)
+				if err != nil {
+					panic(err)
+				}
+
+				fmt.Println("ACTION: find provider finished")
+
 		}
 	}
 }
