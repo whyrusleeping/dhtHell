@@ -113,10 +113,7 @@ func hailMaryDHT(dh *dhtInfo) {
 				if err != nil {
 					panic(err)
 				}
-				go func(mk u.Key) {
-					time.Sleep(time.Second / 2)
-					keys <- mk
-				}(k)
+				keys <- k
 				fmt.Println("ACTION: put finished")
 			case GET:
 				fmt.Println("ACTION: get")
@@ -134,10 +131,7 @@ func hailMaryDHT(dh *dhtInfo) {
 						panic(err)
 					}
 				}
-				go func(mk u.Key) {
-					time.Sleep(time.Second / 2)
-					keys <- mk
-				}(k)
+				keys <- k
 				fmt.Println("ACTION: get finished")
 			case PROVIDE:
 				fmt.Println("ACTION: provide")
@@ -146,10 +140,7 @@ func hailMaryDHT(dh *dhtInfo) {
 				if err != nil {
 					panic(err)
 				}
-				go func() {
-					time.Sleep(time.Second / 4)
-					provs <- k
-				}()
+				provs <- k
 				fmt.Println("ACTION: provide finished")
 			case FINDPROVIDE:
 				fmt.Println("ACTION: find provider")
@@ -158,6 +149,7 @@ func hailMaryDHT(dh *dhtInfo) {
 				if err != nil {
 					panic(err)
 				}
+				provs <- k
 
 				fmt.Println("ACTION: find provider finished")
 
@@ -169,7 +161,7 @@ func main() {
 	u.Debug = true
 	runtime.GOMAXPROCS(10)
 
-	go func() {
+	go func() { //If you need to stop the simulation and inspect all goroutines
 		list,err := net.Listen("tcp", ":4999")
 		if err != nil {
 			panic(err)
@@ -193,20 +185,4 @@ func main() {
 	}
 
 	return
-	ConnectPeers(dhts, 0, 1)
-	ConnectPeers(dhts, 2, 0)
-
-	//Test that we can ping the node
-	PingBetween(dhts, 0, 1)
-	PingBetween(dhts, 1, 0)
-
-	dha := dhts[0]
-	err := dha.dht.PutValue(u.Key("hello"), []byte("world"))
-	if err != nil {
-		panic(err)
-	}
-
-	out,err := dha.dht.GetValue(u.Key("hello"), time.Second * 2)
-	fmt.Println(string(out))
-	fmt.Println("Done!")
 }
