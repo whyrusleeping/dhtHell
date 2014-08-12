@@ -129,6 +129,8 @@ func hailMaryDHT(dh *dhtInfo) {
 			if err != nil {
 				if err == u.ErrSearchIncomplete {
 					fmt.Println("Didnt find value on first try...")
+				} else if err == u.ErrNotFound {
+					fmt.Println("Failed to find value at all.")
 				} else {
 					panic(err)
 				}
