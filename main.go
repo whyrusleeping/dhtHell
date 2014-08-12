@@ -1,24 +1,25 @@
 package main
 
 import (
-	dht "github.com/jbenet/go-ipfs/routing/dht"
 	peer "github.com/jbenet/go-ipfs/peer"
-	ma "github.com/jbenet/go-multiaddr"
+	dht "github.com/jbenet/go-ipfs/routing/dht"
+	"github.com/jbenet/go-ipfs/swarm"
 	u "github.com/jbenet/go-ipfs/util"
+	ma "github.com/jbenet/go-multiaddr"
 
 	"crypto/rand"
-	mrand "math/rand"
 	"encoding/hex"
-	"time"
 	"fmt"
-	"runtime"
+	mrand "math/rand"
 	"net"
+	"runtime"
+	"time"
 )
 
 type dhtInfo struct {
-	dht *dht.IpfsDHT
+	dht  *dht.IpfsDHT
 	addr *ma.Multiaddr
-	p *peer.Peer
+	p    *peer.Peer
 }
 
 func _randPeerID() peer.ID {
@@ -34,7 +35,7 @@ func _randString() string {
 }
 
 func setupDHT(addr string) *dhtInfo {
-	addr_ma,err := ma.NewMultiaddr(addr)
+	addr_ma, err := ma.NewMultiaddr(addr)
 	if err != nil {
 		panic(err)
 	}
@@ -43,27 +44,30 @@ func setupDHT(addr string) *dhtInfo {
 	peer_dht.AddAddress(addr_ma)
 	peer_dht.ID = _randPeerID()
 
-	ndht,err := dht.NewDHT(peer_dht)
+	net := swarm.NewSwarm(peer_dht)
+	err = net.Listen()
 	if err != nil {
 		panic(err)
 	}
 
+	ndht := dht.NewDHT(peer_dht, net)
+
 	ndht.Start()
-	return &dhtInfo{ndht,addr_ma,peer_dht}
+	return &dhtInfo{ndht, addr_ma, peer_dht}
 }
 
 func ConnectPeers(dhts []*dhtInfo, a, b int) {
 	di_a := dhts[a]
 	di_b := dhts[b]
 
-	_,err := di_a.dht.Connect(di_b.addr)
+	_, err := di_a.dht.Connect(di_b.addr)
 	if err != nil {
 		panic(err)
 	}
 }
 
 func PingBetween(dhts []*dhtInfo, a, b int) {
-	dhts[a].dht.Ping(dhts[b].p, time.Second * 2)
+	dhts[a].dht.Ping(dhts[b].p, time.Second*2)
 }
 
 const (
@@ -78,6 +82,7 @@ const (
 var dhts []*dhtInfo
 var keys chan u.Key
 var provs chan u.Key
+
 func init() {
 	keys = make(chan u.Key, 1000)
 	provs = make(chan u.Key, 1000)
@@ -87,7 +92,7 @@ func hailMaryDHT(dh *dhtInfo) {
 	var mycons []*peer.Peer
 	for i := 0; i < 5; i++ {
 		o_id := mrand.Intn(len(dhts))
-		_,err := dh.dht.Connect(dhts[o_id].addr)
+		_, err := dh.dht.Connect(dhts[o_id].addr)
 		if err != nil {
 			panic(err)
 		}
@@ -98,60 +103,57 @@ func hailMaryDHT(dh *dhtInfo) {
 	for {
 		a := mrand.Intn(5) + 1
 		switch a {
-			case PING:
-				fmt.Println("ACTION: ping")
-				o_id := mrand.Intn(len(mycons))
-				err := dh.dht.Ping(mycons[o_id], time.Second * 2)
-				if err != nil {
-					fmt.Println("Ping failed...")
-				}
-				fmt.Println("ACTION: ping finished")
-			case PUT:
-				fmt.Println("ACTION: put")
-				k := u.Key(_randString())
-				err := dh.dht.PutValue(k, []byte(_randString()))
-				if err != nil {
+		case PING:
+			fmt.Println("ACTION: ping")
+			o_id := mrand.Intn(len(mycons))
+			err := dh.dht.Ping(mycons[o_id], time.Second*2)
+			if err != nil {
+				fmt.Println("Ping failed...")
+			}
+			fmt.Println("ACTION: ping finished")
+		case PUT:
+			fmt.Println("ACTION: put")
+			k := u.Key(_randString())
+			dh.dht.PutValue(k, []byte(_randString()))
+			keys <- k
+			fmt.Println("ACTION: put finished")
+		case GET:
+			fmt.Println("ACTION: get")
+			k, ok := <-keys
+			if !ok {
+				fmt.Println("ACTION: get continued")
+				continue
+			}
+			fmt.Println("ACTION: get key")
+			_, err := dh.dht.GetValue(k, time.Second*2)
+			if err != nil {
+				if err == u.ErrSearchIncomplete {
+					fmt.Println("Didnt find value on first try...")
+				} else {
 					panic(err)
 				}
-				keys <- k
-				fmt.Println("ACTION: put finished")
-			case GET:
-				fmt.Println("ACTION: get")
-				k,ok := <-keys
-				if !ok {
-					fmt.Println("ACTION: get continued")
-					continue
-				}
-				fmt.Println("ACTION: get key")
-				_,err := dh.dht.GetValue(k, time.Second * 2)
-				if err != nil {
-					if err == u.ErrSearchIncomplete {
-						fmt.Println("Didnt find value on first try...")
-					} else {
-						panic(err)
-					}
-				}
-				keys <- k
-				fmt.Println("ACTION: get finished")
-			case PROVIDE:
-				fmt.Println("ACTION: provide")
-				k := u.Key(_randString())
-				err := dh.dht.Provide(k)
-				if err != nil {
-					panic(err)
-				}
-				provs <- k
-				fmt.Println("ACTION: provide finished")
-			case FINDPROVIDE:
-				fmt.Println("ACTION: find provider")
-				k := <-provs
-				_,err := dh.dht.FindProviders(k, time.Second * 2)
-				if err != nil {
-					panic(err)
-				}
-				provs <- k
+			}
+			keys <- k
+			fmt.Println("ACTION: get finished")
+		case PROVIDE:
+			fmt.Println("ACTION: provide")
+			k := u.Key(_randString())
+			err := dh.dht.Provide(k)
+			if err != nil {
+				panic(err)
+			}
+			provs <- k
+			fmt.Println("ACTION: provide finished")
+		case FINDPROVIDE:
+			fmt.Println("ACTION: find provider")
+			k := <-provs
+			_, err := dh.dht.FindProviders(k, time.Second*2)
+			if err != nil {
+				panic(err)
+			}
+			provs <- k
 
-				fmt.Println("ACTION: find provider finished")
+			fmt.Println("ACTION: find provider finished")
 
 		}
 	}
@@ -162,7 +164,7 @@ func main() {
 	runtime.GOMAXPROCS(10)
 
 	go func() { //If you need to stop the simulation and inspect all goroutines
-		list,err := net.Listen("tcp", ":4999")
+		list, err := net.Listen("tcp", ":4999")
 		if err != nil {
 			panic(err)
 		}
@@ -171,11 +173,11 @@ func main() {
 		panic("Lets take a look at things.")
 	}()
 	for i := 0; i < 10; i++ {
-		dhts = append(dhts, setupDHT(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000 + i)))
+		dhts = append(dhts, setupDHT(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i)))
 	}
 	fmt.Println("Finished DHT creation.")
 
-	for _,d := range dhts {
+	for _, d := range dhts {
 		go hailMaryDHT(d)
 	}
 
