@@ -92,6 +92,10 @@ func hailMaryDHT(dh *dhtInfo) {
 	var mycons []*peer.Peer
 	for i := 0; i < 5; i++ {
 		o_id := mrand.Intn(len(dhts))
+		if dh == dhts[o_id] {
+			i--
+			continue
+		}
 		_, err := dh.dht.Connect(dhts[o_id].addr)
 		if err != nil {
 			panic(err)
@@ -131,6 +135,8 @@ func hailMaryDHT(dh *dhtInfo) {
 					fmt.Println("Didnt find value on first try...")
 				} else if err == u.ErrNotFound {
 					fmt.Println("Failed to find value at all.")
+				} else if err == u.ErrTimeout {
+					fmt.Println("CAUTION: Call timed out!!")
 				} else {
 					panic(err)
 				}
@@ -151,7 +157,11 @@ func hailMaryDHT(dh *dhtInfo) {
 			k := <-provs
 			_, err := dh.dht.FindProviders(k, time.Second*2)
 			if err != nil {
-				panic(err)
+				if err == u.ErrNotFound {
+					fmt.Println("Couldnt find provider.")
+				} else {
+					panic(err)
+				}
 			}
 			provs <- k
 
@@ -174,7 +184,7 @@ func main() {
 		list.Accept()
 		panic("Lets take a look at things.")
 	}()
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 50; i++ {
 		dhts = append(dhts, setupDHT(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i)))
 	}
 	fmt.Println("Finished DHT creation.")
