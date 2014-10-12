@@ -1,26 +1,28 @@
 package main
 
 import (
-	peer "github.com/jbenet/go-ipfs/peer"
-	dht "github.com/jbenet/go-ipfs/routing/dht"
-	"github.com/jbenet/go-ipfs/swarm"
-	u "github.com/jbenet/go-ipfs/util"
-	ma "github.com/jbenet/go-multiaddr"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 
+	config "github.com/jbenet/go-ipfs/config"
+	core "github.com/jbenet/go-ipfs/core"
+	cmds "github.com/jbenet/go-ipfs/core/commands"
+	crypto "github.com/jbenet/go-ipfs/crypto"
+	peer "github.com/jbenet/go-ipfs/peer"
+	u "github.com/jbenet/go-ipfs/util"
+
+	"code.google.com/p/go.net/context"
+
+	"bufio"
 	"crypto/rand"
+	b64 "encoding/base64"
 	"encoding/hex"
 	"fmt"
-	mrand "math/rand"
-	"net"
+	b58 "github.com/jbenet/go-base58"
 	"runtime"
-	"time"
 )
-
-type dhtInfo struct {
-	dht  *dht.IpfsDHT
-	addr *ma.Multiaddr
-	p    *peer.Peer
-}
 
 func _randPeerID() peer.ID {
 	buf := make([]byte, 16)
@@ -34,169 +36,130 @@ func _randString() string {
 	return hex.EncodeToString(b)
 }
 
-func setupDHT(addr string) *dhtInfo {
-	addr_ma, err := ma.NewMultiaddr(addr)
+func GenIdentity() (string, string, error) {
+	k, pub, err := crypto.GenerateKeyPair(crypto.RSA, 1024)
+	if err != nil {
+		return "", "", err
+	}
+
+	b, err := k.Bytes()
+	if err != nil {
+		return "", "", err
+	}
+
+	privkey := b64.StdEncoding.EncodeToString(b)
+
+	pubkeyb, err := pub.Bytes()
+	if err != nil {
+		return "", "", err
+	}
+
+	id := b58.Encode(u.Hash(pubkeyb))
+	return id, privkey, nil
+}
+
+func setupDHT(addr string, boostrap *core.IpfsNode) *core.IpfsNode {
+	cfg := new(config.Config)
+	cfg.Addresses.Swarm = addr
+	cfg.Datastore.Type = "memory"
+
+	if boostrap != nil {
+		bsp := new(config.BootstrapPeer)
+		bsp.Address = boostrap.Identity.Addresses[0].String()
+		bsp.PeerID = boostrap.Identity.ID.String()
+		cfg.Bootstrap = []*config.BootstrapPeer{bsp}
+	}
+
+	id, priv, err := GenIdentity()
 	if err != nil {
 		panic(err)
 	}
 
-	peer_dht := new(peer.Peer)
-	peer_dht.AddAddress(addr_ma)
-	peer_dht.ID = _randPeerID()
+	cfg.Identity.PeerID = id
+	cfg.Identity.PrivKey = priv
 
-	net := swarm.NewSwarm(peer_dht)
-	err = net.Listen()
+	fmt.Printf("Creating node with id: '%s'\n", id)
+
+	node, err := core.NewIpfsNode(cfg, true)
 	if err != nil {
 		panic(err)
 	}
 
-	ndht := dht.NewDHT(peer_dht, net)
-
-	ndht.Start()
-	return &dhtInfo{ndht, addr_ma, peer_dht}
-}
-
-func ConnectPeers(dhts []*dhtInfo, a, b int) {
-	di_a := dhts[a]
-	di_b := dhts[b]
-
-	_, err := di_a.dht.Connect(di_b.addr)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func PingBetween(dhts []*dhtInfo, a, b int) {
-	dhts[a].dht.Ping(dhts[b].p, time.Second*2)
-}
-
-const (
-	CONNECT = iota
-	PING
-	GET
-	PUT
-	PROVIDE
-	FINDPROVIDE
-)
-
-var dhts []*dhtInfo
-var keys chan u.Key
-var provs chan u.Key
-
-func init() {
-	keys = make(chan u.Key, 1000)
-	provs = make(chan u.Key, 1000)
-}
-
-func hailMaryDHT(dh *dhtInfo) {
-	var mycons []*peer.Peer
-	for i := 0; i < 5; i++ {
-		o_id := mrand.Intn(len(dhts))
-		if dh == dhts[o_id] {
-			i--
-			continue
-		}
-		_, err := dh.dht.Connect(dhts[o_id].addr)
-		if err != nil {
-			panic(err)
-		}
-		mycons = append(mycons, dhts[o_id].p)
-	}
-
-	fmt.Println("DHT done with connects.")
-	for {
-		a := mrand.Intn(5) + 1
-		switch a {
-		case PING:
-			fmt.Println("ACTION: ping")
-			o_id := mrand.Intn(len(mycons))
-			err := dh.dht.Ping(mycons[o_id], time.Second*2)
-			if err != nil {
-				fmt.Println("Ping failed...")
-			}
-			fmt.Println("ACTION: ping finished")
-		case PUT:
-			fmt.Println("ACTION: put")
-			k := u.Key(_randString())
-			dh.dht.PutValue(k, []byte(_randString()))
-			keys <- k
-			fmt.Println("ACTION: put finished")
-		case GET:
-			fmt.Println("ACTION: get")
-			k, ok := <-keys
-			if !ok {
-				fmt.Println("ACTION: get continued")
-				continue
-			}
-			fmt.Println("ACTION: get key")
-			_, err := dh.dht.GetValue(k, time.Second*2)
-			if err != nil {
-				if err == u.ErrSearchIncomplete {
-					fmt.Println("Didnt find value on first try...")
-				} else if err == u.ErrNotFound {
-					fmt.Println("Failed to find value at all.")
-				} else if err == u.ErrTimeout {
-					fmt.Println("CAUTION: Call timed out!!")
-				} else {
-					panic(err)
-				}
-			}
-			keys <- k
-			fmt.Println("ACTION: get finished")
-		case PROVIDE:
-			fmt.Println("ACTION: provide")
-			k := u.Key(_randString())
-			err := dh.dht.Provide(k)
-			if err != nil {
-				panic(err)
-			}
-			provs <- k
-			fmt.Println("ACTION: provide finished")
-		case FINDPROVIDE:
-			fmt.Println("ACTION: find provider")
-			k := <-provs
-			_, err := dh.dht.FindProviders(k, time.Second*2)
-			if err != nil {
-				if err == u.ErrNotFound {
-					fmt.Println("Couldnt find provider.")
-				} else {
-					panic(err)
-				}
-			}
-			provs <- k
-
-			fmt.Println("ACTION: find provider finished")
-
-		}
-	}
+	return node
 }
 
 func main() {
 	u.Debug = true
 	runtime.GOMAXPROCS(10)
 
-	go func() { //If you need to stop the simulation and inspect all goroutines
-		list, err := net.Listen("tcp", ":4999")
-		if err != nil {
-			panic(err)
-		}
+	var nodes []*core.IpfsNode
+	root := setupDHT("/ip4/127.0.0.1/tcp/4999", nil)
+	nodes = []*core.IpfsNode{root}
 
-		list.Accept()
-		panic("Lets take a look at things.")
-	}()
-	for i := 0; i < 50; i++ {
-		dhts = append(dhts, setupDHT(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i)))
+	for i := 0; i < 15; i++ {
+		nodes = append(nodes, setupDHT(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i), root))
 	}
 	fmt.Println("Finished DHT creation.")
 
-	for _, d := range dhts {
-		go hailMaryDHT(d)
+	scan := bufio.NewScanner(os.Stdin)
+	fmt.Println("Enter a command:")
+	for scan.Scan() {
+		cmdparts := strings.Split(scan.Text(), " ")
+		idex, err := strconv.Atoi(cmdparts[0])
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		if len(cmdparts) < 2 {
+			fmt.Println("must specify command!")
+			continue
+		}
+		cmd := strings.ToLower(cmdparts[1])
+		ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
+		switch cmd {
+		case "put":
+			if len(cmdparts) < 4 {
+				fmt.Println("put: '# put key val'")
+				continue
+			}
+			fmt.Printf("putting value: '%s' for key '%s'\n", cmdparts[3], cmdparts[2])
+			err := nodes[idex].Routing.PutValue(ctx, u.Key(cmdparts[2]), []byte(cmdparts[3]))
+			if err != nil {
+				fmt.Println(err)
+			}
+		case "get":
+			if len(cmdparts) < 3 {
+				fmt.Println("get: '# get key'")
+				continue
+			}
+			val, err := nodes[idex].Routing.GetValue(ctx, u.Key(cmdparts[2]))
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("Got value: '%s'\n", string(val))
+		case "diag":
+			diag, err := nodes[idex].Diagnostics.GetDiagnostic(time.Second * 5)
+			if err != nil {
+				fmt.Println(err)
+			}
+			cmds.PrintDiagnostics(diag, os.Stdout)
+		case "findprov":
+			if len(cmdparts) < 4 {
+				fmt.Println("findprov: '# findprov key count'")
+				continue
+			}
+			count, err := strconv.Atoi(cmdparts[3])
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			pchan := nodes[idex].Routing.FindProvidersAsync(ctx, u.Key(cmdparts[2]), count)
+			fmt.Printf("Providers of '%s'\n", cmdparts[2])
+			for p := range pchan {
+				fmt.Printf("\t%s\n", p)
+			}
+		}
 	}
 
-	fmt.Println("Finished start test.")
-	for {
-		time.Sleep(time.Hour)
-	}
-
-	return
 }
