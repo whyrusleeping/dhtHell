@@ -10,32 +10,22 @@ import (
 	core "github.com/jbenet/go-ipfs/core"
 	cmds "github.com/jbenet/go-ipfs/core/commands"
 	crypto "github.com/jbenet/go-ipfs/crypto"
-	peer "github.com/jbenet/go-ipfs/peer"
 	u "github.com/jbenet/go-ipfs/util"
+
+	"flag"
 
 	"code.google.com/p/go.net/context"
 
 	"bufio"
-	"crypto/rand"
 	b64 "encoding/base64"
-	"encoding/hex"
 	"fmt"
-	b58 "github.com/jbenet/go-base58"
 	"runtime"
+
+	b58 "github.com/jbenet/go-base58"
 )
 
-func _randPeerID() peer.ID {
-	buf := make([]byte, 16)
-	rand.Read(buf)
-	return peer.ID(buf)
-}
-
-func _randString() string {
-	b := make([]byte, 6)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
+// GenIdentity creates a random keypair and returns the associated
+// peerID and private key encoded to match config values
 func GenIdentity() (string, string, error) {
 	k, pub, err := crypto.GenerateKeyPair(crypto.RSA, 1024)
 	if err != nil {
@@ -58,6 +48,8 @@ func GenIdentity() (string, string, error) {
 	return id, privkey, nil
 }
 
+// Creates an ipfs node that listens on the given multiaddr and boostraps to
+// the peer in 'bootstrap'
 func setupDHT(addr string, boostrap *core.IpfsNode) *core.IpfsNode {
 	cfg := new(config.Config)
 	cfg.Addresses.Swarm = addr
@@ -88,15 +80,20 @@ func setupDHT(addr string, boostrap *core.IpfsNode) *core.IpfsNode {
 	return node
 }
 
+// global array of nodes, because im lazy and hate passing things to functions
+var nodes []*core.IpfsNode
+
 func main() {
+	nnodes := flag.Int("n", 15, "number of nodes to spawn")
+	flag.Parse()
+
 	u.Debug = true
 	runtime.GOMAXPROCS(10)
 
-	var nodes []*core.IpfsNode
 	root := setupDHT("/ip4/127.0.0.1/tcp/4999", nil)
 	nodes = []*core.IpfsNode{root}
 
-	for i := 0; i < 15; i++ {
+	for i := 0; i < *nnodes; i++ {
 		nodes = append(nodes, setupDHT(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i), root))
 	}
 	fmt.Println("Finished DHT creation.")
@@ -104,10 +101,17 @@ func main() {
 	scan := bufio.NewScanner(os.Stdin)
 	fmt.Println("Enter a command:")
 	for scan.Scan() {
+		if scan.Text() == "quit" {
+			return
+		}
 		cmdparts := strings.Split(scan.Text(), " ")
 		idex, err := strconv.Atoi(cmdparts[0])
 		if err != nil {
 			fmt.Println(err)
+			continue
+		}
+		if idex > *nnodes || idex < 0 {
+			fmt.Println("Index out of range!")
 			continue
 		}
 		if len(cmdparts) < 2 {
@@ -115,51 +119,99 @@ func main() {
 			continue
 		}
 		cmd := strings.ToLower(cmdparts[1])
-		ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
 		switch cmd {
 		case "put":
-			if len(cmdparts) < 4 {
-				fmt.Println("put: '# put key val'")
-				continue
-			}
-			fmt.Printf("putting value: '%s' for key '%s'\n", cmdparts[3], cmdparts[2])
-			err := nodes[idex].Routing.PutValue(ctx, u.Key(cmdparts[2]), []byte(cmdparts[3]))
-			if err != nil {
-				fmt.Println(err)
-			}
+			Put(idex, cmdparts)
 		case "get":
-			if len(cmdparts) < 3 {
-				fmt.Println("get: '# get key'")
-				continue
-			}
-			val, err := nodes[idex].Routing.GetValue(ctx, u.Key(cmdparts[2]))
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			fmt.Printf("Got value: '%s'\n", string(val))
-		case "diag":
-			diag, err := nodes[idex].Diagnostics.GetDiagnostic(time.Second * 5)
-			if err != nil {
-				fmt.Println(err)
-			}
-			cmds.PrintDiagnostics(diag, os.Stdout)
+			Get(idex, cmdparts)
 		case "findprov":
-			if len(cmdparts) < 4 {
-				fmt.Println("findprov: '# findprov key count'")
-				continue
-			}
-			count, err := strconv.Atoi(cmdparts[3])
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			pchan := nodes[idex].Routing.FindProvidersAsync(ctx, u.Key(cmdparts[2]), count)
-			fmt.Printf("Providers of '%s'\n", cmdparts[2])
-			for p := range pchan {
-				fmt.Printf("\t%s\n", p)
-			}
+			FindProv(idex, cmdparts)
+		case "store":
+			Store(idex, cmdparts)
+		case "provide":
+			Provide(idex, cmdparts)
+		case "diag":
+			Diag(idex, cmdparts)
 		}
 	}
+}
 
+func Put(idex int, cmdparts []string) {
+	if len(cmdparts) < 4 {
+		fmt.Println("put: '# put key val'")
+		return
+	}
+	fmt.Printf("putting value: '%s' for key '%s'\n", cmdparts[3], cmdparts[2])
+	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
+	err := nodes[idex].Routing.PutValue(ctx, u.Key(cmdparts[2]), []byte(cmdparts[3]))
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
+func Get(idex int, cmdparts []string) {
+	if len(cmdparts) < 3 {
+		fmt.Println("get: '# get key'")
+		return
+	}
+	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
+	val, err := nodes[idex].Routing.GetValue(ctx, u.Key(cmdparts[2]))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("Got value: '%s'\n", string(val))
+}
+
+func Diag(idex int, cmdparts []string) {
+	diag, err := nodes[idex].Diagnostics.GetDiagnostic(time.Second * 5)
+	if err != nil {
+		fmt.Println(err)
+	}
+	cmds.PrintDiagnostics(diag, os.Stdout)
+
+}
+
+func Store(idex int, cmdparts []string) {
+	if len(cmdparts) < 4 {
+		fmt.Println("store: '# store key val'")
+		return
+	}
+	err := nodes[idex].Datastore.Put(u.Key(cmdparts[2]).DsKey(), []byte(cmdparts[3]))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+}
+
+func Provide(idex int, cmdparts []string) {
+	if len(cmdparts) < 3 {
+		fmt.Println("provide: '# provide key'")
+		return
+	}
+	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
+	err := nodes[idex].Routing.Provide(ctx, u.Key(cmdparts[2]))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
+
+func FindProv(idex int, cmdparts []string) {
+	if len(cmdparts) < 4 {
+		fmt.Println("findprov: '# findprov key count'")
+		return
+	}
+	count, err := strconv.Atoi(cmdparts[3])
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
+	pchan := nodes[idex].Routing.FindProvidersAsync(ctx, u.Key(cmdparts[2]), count)
+	fmt.Printf("Providers of '%s'\n", cmdparts[2])
+	for p := range pchan {
+		fmt.Printf("\t%s\n", p)
+	}
 }
