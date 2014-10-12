@@ -18,16 +18,19 @@ import (
 
 	"bufio"
 	b64 "encoding/base64"
+	"errors"
 	"fmt"
 	"runtime"
 
 	b58 "github.com/jbenet/go-base58"
 )
 
+var ErrQuit = errors.New("quit")
+
 // GenIdentity creates a random keypair and returns the associated
 // peerID and private key encoded to match config values
 func GenIdentity() (string, string, error) {
-	k, pub, err := crypto.GenerateKeyPair(crypto.RSA, 1024)
+	k, pub, err := crypto.GenerateKeyPair(crypto.RSA, 512)
 	if err != nil {
 		return "", "", err
 	}
@@ -80,60 +83,98 @@ func setupDHT(addr string, boostrap *core.IpfsNode) *core.IpfsNode {
 	return node
 }
 
+func ParseCommandFile(finame string) (int, *bufio.Scanner, error) {
+	fi, err := os.Open(finame)
+	if err != nil {
+		return 0, nil, err
+	}
+	scan := bufio.NewScanner(fi)
+	if !scan.Scan() {
+		return 0, nil, errors.New("Invalid file syntax! first line must be num nodes")
+	}
+
+	num, err := strconv.Atoi(scan.Text())
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return num, scan, nil
+}
+
 // global array of nodes, because im lazy and hate passing things to functions
 var nodes []*core.IpfsNode
 
 func main() {
 	nnodes := flag.Int("n", 15, "number of nodes to spawn")
+	cmdfile := flag.String("f", "", "a file of commands to run")
 	flag.Parse()
 
 	u.Debug = true
 	runtime.GOMAXPROCS(10)
 
+	var scan *bufio.Scanner
+	var err error
+	if *cmdfile != "" {
+		*nnodes, scan, err = ParseCommandFile(*cmdfile)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+
 	root := setupDHT("/ip4/127.0.0.1/tcp/4999", nil)
 	nodes = []*core.IpfsNode{root}
-
 	for i := 0; i < *nnodes; i++ {
 		nodes = append(nodes, setupDHT(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i), root))
 	}
 	fmt.Println("Finished DHT creation.")
 
-	scan := bufio.NewScanner(os.Stdin)
-	fmt.Println("Enter a command:")
+	if scan == nil {
+		scan = bufio.NewScanner(os.Stdin)
+		fmt.Println("Enter a command:")
+	}
 	for scan.Scan() {
-		if scan.Text() == "quit" {
+		con := RunCommand(scan.Text())
+		if !con {
 			return
 		}
-		cmdparts := strings.Split(scan.Text(), " ")
-		idex, err := strconv.Atoi(cmdparts[0])
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		if idex > *nnodes || idex < 0 {
-			fmt.Println("Index out of range!")
-			continue
-		}
-		if len(cmdparts) < 2 {
-			fmt.Println("must specify command!")
-			continue
-		}
-		cmd := strings.ToLower(cmdparts[1])
-		switch cmd {
-		case "put":
-			Put(idex, cmdparts)
-		case "get":
-			Get(idex, cmdparts)
-		case "findprov":
-			FindProv(idex, cmdparts)
-		case "store":
-			Store(idex, cmdparts)
-		case "provide":
-			Provide(idex, cmdparts)
-		case "diag":
-			Diag(idex, cmdparts)
-		}
 	}
+}
+
+func RunCommand(cmdstr string) bool {
+	if cmdstr == "quit" {
+		return false
+	}
+	cmdparts := strings.Split(cmdstr, " ")
+	idex, err := strconv.Atoi(cmdparts[0])
+	if err != nil {
+		fmt.Println(err)
+		return true
+	}
+	if idex >= len(nodes) || idex < 0 {
+		fmt.Println("Index out of range!")
+		return true
+	}
+	if len(cmdparts) < 2 {
+		fmt.Println("must specify command!")
+		return true
+	}
+	cmd := strings.ToLower(cmdparts[1])
+	switch cmd {
+	case "put":
+		Put(idex, cmdparts)
+	case "get":
+		Get(idex, cmdparts)
+	case "findprov":
+		FindProv(idex, cmdparts)
+	case "store":
+		Store(idex, cmdparts)
+	case "provide":
+		Provide(idex, cmdparts)
+	case "diag":
+		Diag(idex, cmdparts)
+	}
+	return true
 }
 
 func Put(idex int, cmdparts []string) {
