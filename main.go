@@ -18,6 +18,7 @@ import (
 
 	"bufio"
 	b64 "encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
@@ -318,7 +319,21 @@ func Diag(idex int, cmdparts []string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	cmds.PrintDiagnostics(diag, os.Stdout)
+	var jsonout bool
+	if len(cmdparts) == 3 {
+		if cmdparts[2] == "json" {
+			jsonout = true
+		}
+	}
+	if jsonout {
+		enc := json.NewEncoder(os.Stdout)
+		err := enc.Encode(diag)
+		if err != nil {
+			fmt.Println(err)
+		}
+	} else {
+		cmds.PrintDiagnostics(diag, os.Stdout)
+	}
 
 }
 
@@ -350,13 +365,17 @@ func Provide(idex int, cmdparts []string) {
 
 func FindProv(idex int, cmdparts []string) {
 	if len(cmdparts) < 4 {
-		fmt.Println("findprov: '# findprov key count'")
+		fmt.Println("findprov: '# findprov key [count]'")
 		return
 	}
-	count, err := strconv.Atoi(cmdparts[3])
-	if err != nil {
-		fmt.Println(err)
-		return
+	count := 1
+	var err error
+	if len(cmdparts) >= 4 {
+		count, err = strconv.Atoi(cmdparts[3])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
 	pchan := nodes[idex].Routing.FindProvidersAsync(ctx, u.Key(cmdparts[2]), count)
