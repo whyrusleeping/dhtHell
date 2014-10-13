@@ -25,8 +25,6 @@ import (
 	b58 "github.com/jbenet/go-base58"
 )
 
-var ErrQuit = errors.New("quit")
-
 // GenIdentity creates a random keypair and returns the associated
 // peerID and private key encoded to match config values
 func GenIdentity() (string, string, error) {
@@ -53,17 +51,60 @@ func GenIdentity() (string, string, error) {
 
 // Creates an ipfs node that listens on the given multiaddr and boostraps to
 // the peer in 'bootstrap'
-func setupDHT(addr string, boostrap *core.IpfsNode) *core.IpfsNode {
+func setupDHT(cfg *config.Config) *core.IpfsNode {
+	fmt.Printf("Creating node with id: '%s'\n", cfg.Identity.PeerID)
+	node, err := core.NewIpfsNode(cfg, true)
+	if err != nil {
+		panic(err)
+	}
+
+	return node
+}
+
+// Parses a range of the form: "[x-y]"
+// Also will parse: "x" and "[x]" as single value ranges
+func ParseRange(s string) ([]int, error) {
+	if s[0] == '[' && s[len(s)-1] == ']' {
+		parts := strings.Split(s[1:len(s)-1], "-")
+		if len(parts) == 0 {
+			return nil, errors.New("No value in range!")
+		}
+		if len(parts) == 1 {
+			n, err := strconv.Atoi(parts[0])
+			if err != nil {
+				return nil, err
+			}
+			return []int{n}, nil
+		}
+		low, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return nil, err
+		}
+
+		high, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return nil, err
+		}
+
+		var out []int
+		for i := low; i <= high; i++ {
+			out = append(out, i)
+		}
+		return out, nil
+
+	} else {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return nil, err
+		}
+		return []int{n}, nil
+	}
+}
+
+func BuildConfig(addr string) *config.Config {
 	cfg := new(config.Config)
 	cfg.Addresses.Swarm = addr
 	cfg.Datastore.Type = "memory"
-
-	if boostrap != nil {
-		bsp := new(config.BootstrapPeer)
-		bsp.Address = boostrap.Identity.Addresses[0].String()
-		bsp.PeerID = boostrap.Identity.ID.String()
-		cfg.Bootstrap = []*config.BootstrapPeer{bsp}
-	}
 
 	id, priv, err := GenIdentity()
 	if err != nil {
@@ -73,36 +114,94 @@ func setupDHT(addr string, boostrap *core.IpfsNode) *core.IpfsNode {
 	cfg.Identity.PeerID = id
 	cfg.Identity.PrivKey = priv
 
-	fmt.Printf("Creating node with id: '%s'\n", id)
-
-	node, err := core.NewIpfsNode(cfg, true)
-	if err != nil {
-		panic(err)
-	}
-
-	return node
+	return cfg
 }
 
-func ParseCommandFile(finame string) (int, *bufio.Scanner, error) {
+func BootstrapTo(cfg *config.Config, root *config.Config) {
+	fmt.Printf("%s will connect to %s on startup.\n", cfg.Identity.PeerID, root.Identity.PeerID)
+	bsp := new(config.BootstrapPeer)
+	bsp.Address = root.Addresses.Swarm
+	bsp.PeerID = root.Identity.PeerID
+	cfg.Bootstrap = append(cfg.Bootstrap, bsp)
+}
+
+type testConfig struct {
+	NumNodes int
+}
+
+func ParseCommandFile(finame string, cfg *testConfig) (*bufio.Scanner, error) {
 	fi, err := os.Open(finame)
 	if err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 	scan := bufio.NewScanner(fi)
 	if !scan.Scan() {
-		return 0, nil, errors.New("Invalid file syntax! first line must be num nodes")
+		return nil, errors.New("Invalid file syntax! first line must be num nodes")
 	}
 
 	num, err := strconv.Atoi(scan.Text())
 	if err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 
-	return num, scan, nil
+	cfg.NumNodes = num
+	SetupNConfigs(cfg)
+
+	boostrappingSet := false
+
+	for scan.Scan() {
+		if scan.Text() == "--" {
+			goto out
+		}
+		if strings.Contains(scan.Text(), "->") {
+
+			parts := strings.Split(scan.Text(), "->")
+			lrange, err := ParseRange(parts[0])
+			if err != nil {
+				fmt.Printf("Error parsing range: %s\n", err)
+				continue
+			}
+			rrange, err := ParseRange(parts[1])
+			if err != nil {
+				fmt.Printf("Error parsing range: %s\n", err)
+				continue
+			}
+
+			for _, n := range lrange {
+				for _, r := range rrange {
+					BootstrapTo(configs[n], configs[r])
+				}
+			}
+			boostrappingSet = true
+		} else {
+			fmt.Printf("Invalid Syntax for setup: '%s'\n", scan.Text())
+			continue
+		}
+	}
+
+	// If we read through the whole file as config, set to read commands from stdin
+	scan = nil
+out:
+
+	// If no bootstrapping options selected, everyone boostraps with node 0
+	if !boostrappingSet {
+		for i := 1; i < len(configs); i++ {
+			BootstrapTo(configs[i], configs[0])
+		}
+	}
+	return scan, nil
+}
+
+func SetupNConfigs(c *testConfig) {
+	for i := 0; i < c.NumNodes; i++ {
+		ncfg := BuildConfig(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i))
+		configs = append(configs, ncfg)
+	}
 }
 
 // global array of nodes, because im lazy and hate passing things to functions
 var nodes []*core.IpfsNode
+var configs []*config.Config
 
 func main() {
 	nnodes := flag.Int("n", 15, "number of nodes to spawn")
@@ -114,18 +213,24 @@ func main() {
 
 	var scan *bufio.Scanner
 	var err error
+	testconf := new(testConfig)
 	if *cmdfile != "" {
-		*nnodes, scan, err = ParseCommandFile(*cmdfile)
+		scan, err = ParseCommandFile(*cmdfile, testconf)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+	} else {
+		// Setup default configs
+		testconf.NumNodes = *nnodes
+		SetupNConfigs(testconf)
+		for i := 1; i < len(configs); i++ {
+			BootstrapTo(configs[i], configs[0])
+		}
 	}
 
-	root := setupDHT("/ip4/127.0.0.1/tcp/4999", nil)
-	nodes = []*core.IpfsNode{root}
-	for i := 0; i < *nnodes; i++ {
-		nodes = append(nodes, setupDHT(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i), root))
+	for _, ncfg := range configs {
+		nodes = append(nodes, setupDHT(ncfg))
 	}
 	fmt.Println("Finished DHT creation.")
 
@@ -134,6 +239,10 @@ func main() {
 		fmt.Println("Enter a command:")
 	}
 	for scan.Scan() {
+		if scan.Text() == "==" {
+			scan = bufio.NewScanner(os.Stdin)
+			continue
+		}
 		con := RunCommand(scan.Text())
 		if !con {
 			return
