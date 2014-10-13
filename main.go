@@ -10,6 +10,7 @@ import (
 	core "github.com/jbenet/go-ipfs/core"
 	cmds "github.com/jbenet/go-ipfs/core/commands"
 	crypto "github.com/jbenet/go-ipfs/crypto"
+	peer "github.com/jbenet/go-ipfs/peer"
 	u "github.com/jbenet/go-ipfs/util"
 
 	"flag"
@@ -283,6 +284,8 @@ func RunCommand(cmdstr string) bool {
 		Provide(idex, cmdparts)
 	case "diag":
 		Diag(idex, cmdparts)
+	case "findpeer":
+		FindPeer(idex, cmdparts)
 	}
 	return true
 }
@@ -383,4 +386,20 @@ func FindProv(idex int, cmdparts []string) {
 	for p := range pchan {
 		fmt.Printf("\t%s\n", p)
 	}
+}
+
+func FindPeer(idex int, cmdparts []string) {
+	if len(cmdparts) < 3 {
+		fmt.Println("findpeer: '# findpeer peerid'")
+		return
+	}
+
+	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
+	p, err := nodes[idex].Routing.FindPeer(ctx, peer.ID(cmdparts[2]))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Printf("Got peer: %s\n", p)
 }
