@@ -10,10 +10,12 @@ import (
 	core "github.com/jbenet/go-ipfs/core"
 	cmds "github.com/jbenet/go-ipfs/core/commands"
 	crypto "github.com/jbenet/go-ipfs/crypto"
+	"github.com/jbenet/go-ipfs/diagnostics"
 	peer "github.com/jbenet/go-ipfs/peer"
 	u "github.com/jbenet/go-ipfs/util"
 
 	"flag"
+	"net/http"
 
 	"code.google.com/p/go.net/context"
 
@@ -26,6 +28,8 @@ import (
 
 	b58 "github.com/jbenet/go-base58"
 )
+
+var _ = json.Decoder{}
 
 // GenIdentity creates a random keypair and returns the associated
 // peerID and private key encoded to match config values
@@ -201,6 +205,20 @@ func SetupNConfigs(c *testConfig) {
 	}
 }
 
+func RunServer(s string) {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "index.html")
+	})
+	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
+		diag, err := nodes[0].Diagnostics.GetDiagnostic(time.Second * 10)
+		if err != nil {
+			fmt.Println(err)
+		}
+		w.Write(diagnostics.GetGraphJson(diag))
+	})
+	http.ListenAndServe(s, nil)
+}
+
 // global array of nodes, because im lazy and hate passing things to functions
 var nodes []*core.IpfsNode
 var configs []*config.Config
@@ -208,10 +226,15 @@ var configs []*config.Config
 func main() {
 	nnodes := flag.Int("n", 15, "number of nodes to spawn")
 	cmdfile := flag.String("f", "", "a file of commands to run")
+	serv := flag.String("s", "", "address to run d3 viz server on")
 	flag.Parse()
 
 	u.Debug = true
 	runtime.GOMAXPROCS(10)
+
+	if *serv != "" {
+		go RunServer(*serv)
+	}
 
 	var scan *bufio.Scanner
 	var err error
@@ -257,35 +280,40 @@ func RunCommand(cmdstr string) bool {
 		return false
 	}
 	cmdparts := strings.Split(cmdstr, " ")
-	idex, err := strconv.Atoi(cmdparts[0])
+	idexlist, err := ParseRange(cmdparts[0])
 	if err != nil {
 		fmt.Println(err)
 		return true
 	}
-	if idex >= len(nodes) || idex < 0 {
-		fmt.Println("Index out of range!")
-		return true
-	}
-	if len(cmdparts) < 2 {
-		fmt.Println("must specify command!")
-		return true
-	}
-	cmd := strings.ToLower(cmdparts[1])
-	switch cmd {
-	case "put":
-		Put(idex, cmdparts)
-	case "get":
-		Get(idex, cmdparts)
-	case "findprov":
-		FindProv(idex, cmdparts)
-	case "store":
-		Store(idex, cmdparts)
-	case "provide":
-		Provide(idex, cmdparts)
-	case "diag":
-		Diag(idex, cmdparts)
-	case "findpeer":
-		FindPeer(idex, cmdparts)
+
+	for _, idex := range idexlist {
+		if idex >= len(nodes) || idex < 0 {
+			fmt.Printf("Index %d out of range!\n", idex)
+			return true
+		}
+		if len(cmdparts) < 2 {
+			fmt.Println("must specify command!")
+			return true
+		}
+		cmd := strings.ToLower(cmdparts[1])
+		switch cmd {
+		case "put":
+			Put(idex, cmdparts)
+		case "get":
+			Get(idex, cmdparts)
+		case "findprov":
+			FindProv(idex, cmdparts)
+		case "store":
+			Store(idex, cmdparts)
+		case "provide":
+			Provide(idex, cmdparts)
+		case "diag":
+			Diag(idex, cmdparts)
+		case "findpeer":
+			FindPeer(idex, cmdparts)
+		case "bandwidth":
+			GetBandwidth(idex, cmdparts)
+		}
 	}
 	return true
 }
@@ -402,4 +430,9 @@ func FindPeer(idex int, cmdparts []string) {
 	}
 
 	fmt.Printf("Got peer: %s\n", p)
+}
+
+func GetBandwidth(idex int, cmdparts []string) {
+	in, out := nodes[idex].Network.GetBandwidthTotals()
+	fmt.Printf("Bandwidth totals\n\tIn:  %d\n\tOut: %d\n", in, out)
 }
