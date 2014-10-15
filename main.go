@@ -70,6 +70,9 @@ func setupDHT(cfg *config.Config) *core.IpfsNode {
 // Parses a range of the form: "[x-y]"
 // Also will parse: "x" and "[x]" as single value ranges
 func ParseRange(s string) ([]int, error) {
+	if len(s) == 0 {
+		return nil, errors.New("no input given")
+	}
 	if s[0] == '[' && s[len(s)-1] == ']' {
 		parts := strings.Split(s[1:len(s)-1], "-")
 		if len(parts) == 0 {

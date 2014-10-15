@@ -23,9 +23,9 @@ var width = 960,
 var color = d3.scale.category20();
 
 var force = d3.layout.force()
-    .charge(-100)
-    .linkDistance(60)
-	.gravity(0.05)
+    .charge(-50)
+    .linkDistance(90)
+	.gravity(0.01)
     .size([width, height]);
 
 var svg = d3.select("body").append("svg")
