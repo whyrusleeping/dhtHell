@@ -219,7 +219,10 @@ func RunServer(s string) {
 		}
 		w.Write(diagnostics.GetGraphJson(diag))
 	})
-	http.ListenAndServe(s, nil)
+	err := http.ListenAndServe(s, nil)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 // global array of nodes, because im lazy and hate passing things to functions
