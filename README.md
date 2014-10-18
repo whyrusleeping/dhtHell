@@ -23,6 +23,12 @@ For example:
 
 Would tell node 4 to run a put of the value "hello" for the key "test"
 
+And:
+
+	[3-7] get test
+
+Would tell nodes 3 through 7 to get the key "test"
+
 The Sequence "==" signals to switch input over to standard in, allowing the user to manually enter commands
 
 ## Commands
@@ -44,6 +50,12 @@ Diag:
 
 FindProv:
 	Args: key
+
+GetBandwidth:
+	Args: none!
+
+FindPeer:
+	Args: peerid
 
 
 ## Example
