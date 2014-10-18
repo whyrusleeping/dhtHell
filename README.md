@@ -33,30 +33,29 @@ The Sequence "==" signals to switch input over to standard in, allowing the user
 
 ## Commands
 
-Put:
-	Args: key, val
+	Put:
+		Args: key, val
 
-Get:
-	Args: key
-
-Store:
-	Args: key, val
-
-Provide:
-	Args: key
-
-Diag:
-	Args: none!
-
-FindProv:
-	Args: key
-
-GetBandwidth:
-	Args: none!
-
-FindPeer:
-	Args: peerid
-
+	Get:
+		Args: key
+	
+	Store:
+		Args: key, val
+	
+	Provide:
+		Args: key
+	
+	Diag:
+		Args: none!
+	
+	FindProv:
+		Args: key
+	
+	GetBandwidth:
+		Args: none!
+	
+	FindPeer:
+		Args: peerid
 
 ## Example
 
