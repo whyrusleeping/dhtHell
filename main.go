@@ -204,10 +204,14 @@ out:
 func SetupNConfigs(c *testConfig) {
 	for i := 0; i < c.NumNodes; i++ {
 		ncfg := BuildConfig(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i))
+		if setuprpc {
+			ncfg.Addresses.API = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 9000+i)
+		}
 		configs = append(configs, ncfg)
 	}
 }
 
+// Runs the visualization server to view d3 graph of the network
 func RunServer(s string) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "index.html")
@@ -228,12 +232,16 @@ func RunServer(s string) {
 // global array of nodes, because im lazy and hate passing things to functions
 var nodes []*core.IpfsNode
 var configs []*config.Config
+var setuprpc bool
 
 func main() {
 	nnodes := flag.Int("n", 15, "number of nodes to spawn")
 	cmdfile := flag.String("f", "", "a file of commands to run")
 	serv := flag.String("s", "", "address to run d3 viz server on")
+	rpc := flag.Bool("r", false, "whether or not to turn on rpc")
 	flag.Parse()
+
+	setuprpc = *rpc
 
 	u.Debug = true
 	runtime.GOMAXPROCS(10)
