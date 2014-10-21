@@ -8,16 +8,12 @@ import (
 
 	config "github.com/jbenet/go-ipfs/config"
 	core "github.com/jbenet/go-ipfs/core"
-	cmds "github.com/jbenet/go-ipfs/core/commands"
 	crypto "github.com/jbenet/go-ipfs/crypto"
 	"github.com/jbenet/go-ipfs/diagnostics"
-	peer "github.com/jbenet/go-ipfs/peer"
 	u "github.com/jbenet/go-ipfs/util"
 
 	"flag"
 	"net/http"
-
-	"code.google.com/p/go.net/context"
 
 	"bufio"
 	b64 "encoding/base64"
@@ -30,6 +26,8 @@ import (
 )
 
 var _ = json.Decoder{}
+
+var ErrArgCount = errors.New("not enough arguments")
 
 // GenIdentity creates a random keypair and returns the associated
 // peerID and private key encoded to match config values
@@ -55,7 +53,7 @@ func GenIdentity() (string, string, error) {
 	return id, privkey, nil
 }
 
-// Creates an ipfs node that listens on the given multiaddr and boostraps to
+// Creates an ipfs node that listens on the given multiaddr and bootstraps to
 // the peer in 'bootstrap'
 func setupDHT(cfg *config.Config) *core.IpfsNode {
 	fmt.Printf("Creating node with id: '%s'\n", cfg.Identity.PeerID)
@@ -138,6 +136,40 @@ type testConfig struct {
 	NumNodes int
 }
 
+func ExecConfigLine(s string) bool {
+	if len(s) > 0 && s[0] == '#' {
+		return false
+	}
+	if s == "--" {
+		return true
+	}
+	if strings.Contains(s, "->") {
+
+		parts := strings.Split(s, "->")
+		lrange, err := ParseRange(parts[0])
+		if err != nil {
+			fmt.Printf("Error parsing range: %s\n", err)
+			return false
+		}
+		rrange, err := ParseRange(parts[1])
+		if err != nil {
+			fmt.Printf("Error parsing range: %s\n", err)
+			return false
+		}
+
+		for _, n := range lrange {
+			for _, r := range rrange {
+				BootstrapTo(configs[n], configs[r])
+			}
+		}
+		bootstrappingSet = true
+	} else {
+		fmt.Printf("Invalid Syntax for setup: '%s'\n", s)
+		return false
+	}
+	return false
+}
+
 func ParseCommandFile(finame string, cfg *testConfig) (*bufio.Scanner, error) {
 	fi, err := os.Open(finame)
 	if err != nil {
@@ -155,8 +187,6 @@ func ParseCommandFile(finame string, cfg *testConfig) (*bufio.Scanner, error) {
 
 	cfg.NumNodes = num
 	SetupNConfigs(cfg)
-
-	boostrappingSet := false
 
 	for scan.Scan() {
 		if scan.Text() == "--" {
@@ -181,7 +211,7 @@ func ParseCommandFile(finame string, cfg *testConfig) (*bufio.Scanner, error) {
 					BootstrapTo(configs[n], configs[r])
 				}
 			}
-			boostrappingSet = true
+			bootstrappingSet = true
 		} else {
 			fmt.Printf("Invalid Syntax for setup: '%s'\n", scan.Text())
 			continue
@@ -192,8 +222,8 @@ func ParseCommandFile(finame string, cfg *testConfig) (*bufio.Scanner, error) {
 	scan = nil
 out:
 
-	// If no bootstrapping options selected, everyone boostraps with node 0
-	if !boostrappingSet {
+	// If no bootstrapping options selected, everyone bootstraps with node 0
+	if !bootstrappingSet {
 		for i := 1; i < len(configs); i++ {
 			BootstrapTo(configs[i], configs[0])
 		}
@@ -229,16 +259,43 @@ func RunServer(s string) {
 	}
 }
 
+func ConfigPrompt(scan *bufio.Scanner) error {
+	fmt.Println("Please enter number of nodes:")
+	if !scan.Scan() {
+		return errors.New("not enough input!")
+	}
+	nnum := scan.Text()
+	n, err := strconv.Atoi(nnum)
+	if err != nil {
+		return err
+	}
+
+	c := new(testConfig)
+	c.NumNodes = n
+	SetupNConfigs(c)
+
+	fmt.Println("Enter bootstrapping config: ('--' to stop)")
+	for scan.Scan() {
+		if ExecConfigLine(scan.Text()) {
+			break
+		}
+	}
+
+	return nil
+}
+
 // global array of nodes, because im lazy and hate passing things to functions
 var nodes []*core.IpfsNode
 var configs []*config.Config
 var setuprpc bool
+var bootstrappingSet bool
 
 func main() {
-	nnodes := flag.Int("n", 15, "number of nodes to spawn")
+	//nnodes := flag.Int("n", 15, "number of nodes to spawn")
 	cmdfile := flag.String("f", "", "a file of commands to run")
 	serv := flag.String("s", "", "address to run d3 viz server on")
 	rpc := flag.Bool("r", false, "whether or not to turn on rpc")
+	def := flag.Bool("default", false, "whether or not to load default config")
 	flag.Parse()
 
 	setuprpc = *rpc
@@ -260,11 +317,18 @@ func main() {
 			return
 		}
 	} else {
-		// Setup default configs
-		testconf.NumNodes = *nnodes
-		SetupNConfigs(testconf)
-		for i := 1; i < len(configs); i++ {
-			BootstrapTo(configs[i], configs[0])
+		scan = bufio.NewScanner(os.Stdin)
+		if *def {
+			testconf.NumNodes = 15
+			SetupNConfigs(testconf)
+			for _, cfg := range configs[1:] {
+				BootstrapTo(cfg, configs[0])
+			}
+		} else {
+			ConfigPrompt(scan)
+			if scan.Err() != nil {
+				fmt.Printf("Scan error: %s\n", scan.Err())
+			}
 		}
 	}
 
@@ -273,11 +337,11 @@ func main() {
 	}
 	fmt.Println("Finished DHT creation.")
 
-	if scan == nil {
-		scan = bufio.NewScanner(os.Stdin)
-		fmt.Println("Enter a command:")
-	}
+	fmt.Println("Enter a command:")
 	for scan.Scan() {
+		if len(scan.Text()) > 0 && scan.Text()[0] == '#' {
+			continue
+		}
 		if scan.Text() == "==" {
 			scan = bufio.NewScanner(os.Stdin)
 			continue
@@ -287,166 +351,4 @@ func main() {
 			return
 		}
 	}
-}
-
-func RunCommand(cmdstr string) bool {
-	if cmdstr == "quit" {
-		return false
-	}
-	cmdparts := strings.Split(cmdstr, " ")
-	idexlist, err := ParseRange(cmdparts[0])
-	if err != nil {
-		fmt.Println(err)
-		return true
-	}
-
-	for _, idex := range idexlist {
-		if idex >= len(nodes) || idex < 0 {
-			fmt.Printf("Index %d out of range!\n", idex)
-			return true
-		}
-		if len(cmdparts) < 2 {
-			fmt.Println("must specify command!")
-			return true
-		}
-		cmd := strings.ToLower(cmdparts[1])
-		switch cmd {
-		case "put":
-			Put(idex, cmdparts)
-		case "get":
-			Get(idex, cmdparts)
-		case "findprov":
-			FindProv(idex, cmdparts)
-		case "store":
-			Store(idex, cmdparts)
-		case "provide":
-			Provide(idex, cmdparts)
-		case "diag":
-			Diag(idex, cmdparts)
-		case "findpeer":
-			FindPeer(idex, cmdparts)
-		case "bandwidth":
-			GetBandwidth(idex, cmdparts)
-		}
-	}
-	return true
-}
-
-func Put(idex int, cmdparts []string) {
-	if len(cmdparts) < 4 {
-		fmt.Println("put: '# put key val'")
-		return
-	}
-	fmt.Printf("putting value: '%s' for key '%s'\n", cmdparts[3], cmdparts[2])
-	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	err := nodes[idex].Routing.PutValue(ctx, u.Key(cmdparts[2]), []byte(cmdparts[3]))
-	if err != nil {
-		fmt.Println(err)
-	}
-}
-
-func Get(idex int, cmdparts []string) {
-	if len(cmdparts) < 3 {
-		fmt.Println("get: '# get key'")
-		return
-	}
-	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	val, err := nodes[idex].Routing.GetValue(ctx, u.Key(cmdparts[2]))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Printf("Got value: '%s'\n", string(val))
-}
-
-func Diag(idex int, cmdparts []string) {
-	diag, err := nodes[idex].Diagnostics.GetDiagnostic(time.Second * 5)
-	if err != nil {
-		fmt.Println(err)
-	}
-	var jsonout bool
-	if len(cmdparts) == 3 {
-		if cmdparts[2] == "json" {
-			jsonout = true
-		}
-	}
-	if jsonout {
-		enc := json.NewEncoder(os.Stdout)
-		err := enc.Encode(diag)
-		if err != nil {
-			fmt.Println(err)
-		}
-	} else {
-		cmds.PrintDiagnostics(diag, os.Stdout)
-	}
-
-}
-
-func Store(idex int, cmdparts []string) {
-	if len(cmdparts) < 4 {
-		fmt.Println("store: '# store key val'")
-		return
-	}
-	err := nodes[idex].Datastore.Put(u.Key(cmdparts[2]).DsKey(), []byte(cmdparts[3]))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-}
-
-func Provide(idex int, cmdparts []string) {
-	if len(cmdparts) < 3 {
-		fmt.Println("provide: '# provide key'")
-		return
-	}
-	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	err := nodes[idex].Routing.Provide(ctx, u.Key(cmdparts[2]))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-}
-
-func FindProv(idex int, cmdparts []string) {
-	if len(cmdparts) < 4 {
-		fmt.Println("findprov: '# findprov key [count]'")
-		return
-	}
-	count := 1
-	var err error
-	if len(cmdparts) >= 4 {
-		count, err = strconv.Atoi(cmdparts[3])
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	}
-	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	pchan := nodes[idex].Routing.FindProvidersAsync(ctx, u.Key(cmdparts[2]), count)
-	fmt.Printf("Providers of '%s'\n", cmdparts[2])
-	for p := range pchan {
-		fmt.Printf("\t%s\n", p)
-	}
-}
-
-func FindPeer(idex int, cmdparts []string) {
-	if len(cmdparts) < 3 {
-		fmt.Println("findpeer: '# findpeer peerid'")
-		return
-	}
-
-	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	p, err := nodes[idex].Routing.FindPeer(ctx, peer.ID(cmdparts[2]))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	fmt.Printf("Got peer: %s\n", p)
-}
-
-func GetBandwidth(idex int, cmdparts []string) {
-	in, out := nodes[idex].Network.GetBandwidthTotals()
-	fmt.Printf("Bandwidth totals\n\tIn:  %d\n\tOut: %d\n", in, out)
 }
