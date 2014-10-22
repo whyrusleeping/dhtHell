@@ -166,6 +166,7 @@ func main() {
 		go RunServer(*serv)
 	}
 
+	// Setup Configuration and inputs
 	var scan *bufio.Scanner
 	testconf := new(testConfig)
 	if *cmdfile != "" {

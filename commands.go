@@ -35,6 +35,15 @@ func RunCommand(cmdstr string) bool {
 		return false
 	}
 	cmdparts := strings.Split(cmdstr, " ")
+	if cmdparts[0] == "expect" {
+		if !Expect(cmdparts[1:]) {
+			// maybe clean up a bit?
+			fmt.Println("Expect failed! Halting!")
+			os.Exit(-1)
+		}
+		return true
+	}
+
 	idexlist, err := ParseRange(cmdparts[0])
 	if err != nil {
 		fmt.Println(err)
@@ -65,6 +74,43 @@ func RunCommand(cmdstr string) bool {
 	return true
 }
 
+func Expect(cmdparts []string) bool {
+	idexlist, err := ParseRange(cmdparts[0])
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	for _, idex := range idexlist {
+		if idex >= len(nodes) || idex < 0 {
+			fmt.Printf("Index %d out of range!\n", idex)
+			return false
+		}
+		if len(cmdparts) < 2 {
+			fmt.Println("must specify command!")
+			return false
+		}
+		cmd := strings.ToLower(cmdparts[1])
+		switch cmd {
+		case "get":
+			return AssertGet(idex, cmdparts[2], cmdparts[3])
+		default:
+			fnc, ok := commands[cmd]
+			if !ok {
+				fmt.Println("unrecognized command!")
+			} else {
+				err := fnc(idex, cmdparts)
+				if err != nil {
+					fmt.Printf("Error: %s\n", err)
+				}
+				return false
+			}
+		}
+
+	}
+	return true
+}
+
 func Put(idex int, cmdparts []string) error {
 	if len(cmdparts) < 4 {
 		fmt.Println("put: '# put key val'")
@@ -87,6 +133,23 @@ func Get(idex int, cmdparts []string) error {
 	}
 	fmt.Printf("%d) Got value: '%s'\n", idex, string(val))
 	return nil
+}
+
+func AssertGet(idex int, key, exp string) bool {
+	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
+	val, err := nodes[idex].Routing.GetValue(ctx, u.Key(key))
+	if err != nil {
+		fmt.Printf("Get error: %s\n", err)
+		return false
+	}
+
+	if string(val) != exp {
+		fmt.Printf("expected '%s' but got '%s' instead.\n", exp, string(val))
+		return false
+	}
+
+	fmt.Println("Expectation Successful!")
+	return true
 }
 
 func Diag(idex int, cmdparts []string) error {
