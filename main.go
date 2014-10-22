@@ -167,17 +167,17 @@ func main() {
 	}
 
 	var scan *bufio.Scanner
-	var err error
 	testconf := new(testConfig)
 	if *cmdfile != "" {
-		scan, err = ParseCommandFile(*cmdfile, testconf)
+		fiscan, err := ParseCommandFile(*cmdfile, testconf)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+		scan = fiscan
 	} else {
 		scan = bufio.NewScanner(os.Stdin)
-		if *def {
+		if *def { // Default configuration
 			testconf.NumNodes = 15
 			SetupNConfigs(testconf)
 			for _, cfg := range configs[1:] {
@@ -191,19 +191,24 @@ func main() {
 		}
 	}
 
+	// Build ipfs nodes as specified by the global array of configurations
 	SetupNodes()
 
+	// Begin command execution
 	fmt.Println("Enter a command:")
 	for scan.Scan() {
+		if len(scan.Text()) == 0 {
+			continue
+		}
 		if len(scan.Text()) > 0 && scan.Text()[0] == '#' {
 			continue
 		}
 		if scan.Text() == "==" {
+			// Switch over input to standard in
 			scan = bufio.NewScanner(os.Stdin)
 			continue
 		}
-		cont := RunCommand(scan.Text())
-		if !cont {
+		if !RunCommand(scan.Text()) {
 			return
 		}
 	}
