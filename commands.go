@@ -93,6 +93,10 @@ func Expect(cmdparts []string) bool {
 		cmd := strings.ToLower(cmdparts[1])
 		switch cmd {
 		case "get":
+			if len(cmdparts) < 4 {
+				fmt.Println("Invalid args to expect get!")
+				return false
+			}
 			return AssertGet(idex, cmdparts[2], cmdparts[3])
 		default:
 			fnc, ok := commands[cmd]
