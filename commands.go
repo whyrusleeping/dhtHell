@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"code.google.com/p/go.net/context"
+	b58 "github.com/jbenet/go-base58"
 	cmds "github.com/jbenet/go-ipfs/core/commands"
 	"github.com/jbenet/go-ipfs/peer"
 	u "github.com/jbenet/go-ipfs/util"
@@ -245,12 +246,12 @@ func FindPeer(idex int, cmdparts []string) error {
 		}
 		search = nodes[n].Identity.ID()
 	} else {
-		search = peer.ID(cmdparts[2])
+		search = peer.ID(b58.Decode(cmdparts[2]))
 	}
 	fmt.Printf("Searching for peer: %s\n", search)
 
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	p, err := nodes[idex].Routing.FindPeer(ctx, peer.ID(cmdparts[2]))
+	p, err := nodes[idex].Routing.FindPeer(ctx, search)
 	if err != nil {
 		return err
 	}
