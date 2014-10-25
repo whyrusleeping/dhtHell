@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -12,7 +14,9 @@ import (
 	"code.google.com/p/go.net/context"
 	b58 "github.com/jbenet/go-base58"
 	cmds "github.com/jbenet/go-ipfs/core/commands"
+	imp "github.com/jbenet/go-ipfs/importer"
 	"github.com/jbenet/go-ipfs/peer"
+	uio "github.com/jbenet/go-ipfs/unixfs/io"
 	u "github.com/jbenet/go-ipfs/util"
 )
 
@@ -30,6 +34,8 @@ func init() {
 	commands["diag"] = Diag
 	commands["findpeer"] = FindPeer
 	commands["bandwidth"] = GetBandwidth
+	commands["add"] = AddFile
+	commands["readfile"] = ReadFile
 }
 
 func RunCommand(cmdstr string) bool {
@@ -42,6 +48,25 @@ func RunCommand(cmdstr string) bool {
 			// maybe clean up a bit?
 			fmt.Println("Expect failed! Halting!")
 			os.Exit(-1)
+		}
+		return true
+	}
+
+	if cmdparts[0][0] == '@' {
+		// create file
+		fname := cmdparts[0][1:]
+		switch cmdparts[1] {
+		case "make":
+			size, err := strconv.Atoi(cmdparts[2])
+			if err != nil {
+				fmt.Println(err)
+				return false
+			}
+			fi := NewFile(fname, int64(size))
+			files[fname] = fi
+		default:
+			fmt.Println("Unrecognized file operation")
+			return false
 		}
 		return true
 	}
@@ -108,8 +133,8 @@ func Expect(cmdparts []string) bool {
 				err := fnc(idex, cmdparts)
 				if err != nil {
 					fmt.Printf("Error: %s\n", err)
+					return false
 				}
-				return false
 			}
 		}
 
@@ -225,6 +250,63 @@ func FindProv(idex int, cmdparts []string) error {
 	fmt.Printf("%d) Providers of '%s'\n", idex, cmdparts[2])
 	for p := range pchan {
 		fmt.Printf("\t%s\n", p)
+	}
+	return nil
+}
+
+func ReadFile(idex int, cmdparts []string) error {
+	if len(cmdparts) < 3 {
+		fmt.Println("readfile: '# add fileref'")
+		return ErrArgCount
+	}
+
+	f, ok := files[cmdparts[2]]
+	if !ok {
+		fmt.Printf("No such file: %s\n", cmdparts[2])
+		return u.ErrNotFound
+	}
+
+	nd, err := nodes[idex].DAG.Get(f.RootKey)
+	if err != nil {
+		return err
+	}
+
+	read, err := uio.NewDagReader(nd, nodes[idex].DAG)
+	if err != nil {
+		return err
+	}
+	b, err := ioutil.ReadAll(read)
+	if err != nil {
+		fmt.Println("Failed to read file.")
+		return err
+	}
+	if !bytes.Equal(b, f.Data) {
+		return errors.New("File we read doesnt match original bytes")
+	}
+
+	fmt.Println("Read File Succeeded!")
+	return nil
+}
+
+func AddFile(idex int, cmdparts []string) error {
+	if len(cmdparts) < 3 {
+		fmt.Println("addfile: '# add fileref'")
+		return ErrArgCount
+	}
+
+	f, ok := files[cmdparts[2]]
+	if !ok {
+		fmt.Printf("No such file: %s\n", cmdparts[2])
+		return u.ErrNotFound
+	}
+
+	nd, err := imp.NewDagFromReader(f.GetReader())
+	if err != nil {
+		return err
+	}
+	_, err = nodes[idex].DAG.Add(nd)
+	if err != nil {
+		return err
 	}
 	return nil
 }
