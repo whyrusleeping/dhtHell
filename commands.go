@@ -71,6 +71,17 @@ func RunCommand(cmdstr string) bool {
 		return true
 	}
 
+	if cmdparts[0] == "sleep" {
+		dur, err := strconv.Atoi(cmdparts[1])
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		fmt.Printf("Sleeping for %d seconds.\n", dur)
+		time.Sleep(time.Second * time.Duration(dur))
+		return true
+	}
+
 	idexlist, err := ParseRange(cmdparts[0])
 	if err != nil {
 		fmt.Println(err)
