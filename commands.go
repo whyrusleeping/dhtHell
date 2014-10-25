@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -238,6 +239,9 @@ func FindPeer(idex int, cmdparts []string) error {
 		n, err := strconv.Atoi(cmdparts[2][1:])
 		if err != nil {
 			return err
+		}
+		if n >= len(nodes) {
+			return errors.New("specified peernum out of range")
 		}
 		search = nodes[n].Identity.ID()
 	} else {
