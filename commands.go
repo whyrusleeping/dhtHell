@@ -233,6 +233,18 @@ func FindPeer(idex int, cmdparts []string) error {
 		return ErrArgCount
 	}
 
+	var search peer.ID
+	if cmdparts[2][0] == '$' {
+		n, err := strconv.Atoi(cmdparts[2][1:])
+		if err != nil {
+			return err
+		}
+		search = nodes[n].Identity.ID()
+	} else {
+		search = peer.ID(cmdparts[2])
+	}
+	fmt.Printf("Searching for peer: %s\n", search)
+
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
 	p, err := nodes[idex].Routing.FindPeer(ctx, peer.ID(cmdparts[2]))
 	if err != nil {
