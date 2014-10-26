@@ -1,15 +1,12 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	config "github.com/jbenet/go-ipfs/config"
 	core "github.com/jbenet/go-ipfs/core"
-	fsio "github.com/jbenet/go-ipfs/unixfs/io"
 	u "github.com/jbenet/go-ipfs/util"
 
 	"flag"
@@ -197,51 +194,6 @@ func main() {
 
 	// Build ipfs nodes as specified by the global array of configurations
 	SetupNodes()
-
-	sb := new(Behaviour)
-	sb.Initiator = 4
-	sb.Lifespan = time.Second * 100
-	sb.ValSize = 100000
-	sb.involvedNodes = make(map[int]struct{})
-	sb.unaddedNodes = make(map[int]struct{})
-	curve := new(interestCurve)
-	curve.milestones = []milestone{
-		milestone{80, time.Second * 30},
-		milestone{90, time.Second * 10},
-		milestone{70, time.Second * 20},
-		milestone{50, time.Second * 20},
-	}
-	sb.curve = curve
-	sb.Lifespan = time.Second * 100
-	//go sb.Start()
-	_ = func() {
-		nd := sb.genData()
-		err := nodes[25].DAG.AddRecursive(nd)
-		if err != nil {
-			panic(err)
-		}
-
-		time.Sleep(time.Second)
-
-		k, _ := nd.Key()
-		nnd, err := nodes[8].DAG.Get(k)
-		if err != nil {
-			fmt.Printf("test get failed: %s\n", err)
-		}
-		_ = nnd
-		fmt.Println("Got node successfully!")
-		read, err := fsio.NewDagReader(nnd, nodes[8].DAG)
-		if err != nil {
-			fmt.Printf("Create reader failed: %s", err)
-			return
-		}
-		_, err = ioutil.ReadAll(read)
-		if err != nil {
-			fmt.Printf("reader failed: %s", err)
-			return
-		}
-		fmt.Println("DONE")
-	}
 
 	// Begin command execution
 	fmt.Println("Enter a command:")

@@ -64,6 +64,7 @@ func RunCommand(cmdstr string) bool {
 			}
 			fi := NewFile(fname, int64(size))
 			files[fname] = fi
+			fmt.Printf("Created '%s' = '%s'\n", fi.Name, fi.RootKey)
 		default:
 			fmt.Println("Unrecognized file operation")
 			return false
@@ -315,7 +316,8 @@ func AddFile(idex int, cmdparts []string) error {
 	if err != nil {
 		return err
 	}
-	_, err = nodes[idex].DAG.Add(nd)
+
+	err = nodes[idex].DAG.AddRecursive(nd)
 	if err != nil {
 		return err
 	}
