@@ -278,6 +278,7 @@ func ReadFile(idex int, cmdparts []string) error {
 		return u.ErrNotFound
 	}
 
+	start := time.Now()
 	nd, err := nodes[idex].DAG.Get(f.RootKey)
 	if err != nil {
 		return err
@@ -292,11 +293,14 @@ func ReadFile(idex int, cmdparts []string) error {
 		fmt.Println("Failed to read file.")
 		return err
 	}
+	end := time.Now()
 	if !bytes.Equal(b, f.Data) {
 		return errors.New("File we read doesnt match original bytes")
 	}
 
-	fmt.Println("Read File Succeeded!")
+	took := end.Sub(start)
+	bps := float64(len(b)) / took.Seconds()
+	fmt.Printf("Read File Succeeded: %f bytes per second\n", bps)
 	return nil
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 
@@ -194,6 +195,14 @@ func main() {
 
 	// Build ipfs nodes as specified by the global array of configurations
 	SetupNodes()
+
+	fi, err := os.Create("cpu.prof")
+	if err != nil {
+		panic(err)
+	}
+
+	pprof.StartCPUProfile(fi)
+	defer pprof.StopCPUProfile()
 
 	// Begin command execution
 	fmt.Println("Enter a command:")
