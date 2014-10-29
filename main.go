@@ -196,10 +196,20 @@ func main() {
 	// Build ipfs nodes as specified by the global array of configurations
 	SetupNodes()
 
+	defer func() {
+		fi, err := os.Create("mem.prof")
+		if err != nil {
+			panic(err)
+		}
+		pprof.WriteHeapProfile(fi)
+		fi.Close()
+	}()
+
 	fi, err := os.Create("cpu.prof")
 	if err != nil {
 		panic(err)
 	}
+	defer fi.Close()
 
 	pprof.StartCPUProfile(fi)
 	defer pprof.StopCPUProfile()
@@ -222,4 +232,5 @@ func main() {
 			return
 		}
 	}
+
 }
