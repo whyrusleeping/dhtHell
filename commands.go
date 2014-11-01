@@ -36,13 +36,21 @@ func init() {
 	commands["bandwidth"] = GetBandwidth
 	commands["add"] = AddFile
 	commands["readfile"] = ReadFile
+	commands["kill"] = KillNode
 }
 
 func RunCommand(cmdstr string) bool {
+	var async bool
 	if cmdstr == "quit" {
 		return false
 	}
 	cmdparts := strings.Split(cmdstr, " ")
+
+	if cmdparts[0] == "go" {
+		async = true
+		cmdparts = cmdparts[1:]
+	}
+
 	if cmdparts[0] == "expect" {
 		if !Expect(cmdparts[1:]) {
 			// maybe clean up a bit?
@@ -89,14 +97,28 @@ func RunCommand(cmdstr string) bool {
 		return true
 	}
 
+	if len(cmdparts) < 2 {
+		fmt.Println("must specify command!")
+		return true
+	}
+
+	if async {
+		runCommandsAsync(idexlist, cmdparts, false)
+	} else {
+		runCommandsSync(idexlist, cmdparts)
+	}
+
+	return true
+}
+
+func runCommandsSync(idexlist []int, cmdparts []string) {
 	for _, idex := range idexlist {
 		if idex >= len(nodes) || idex < 0 {
 			fmt.Printf("Index %d out of range!\n", idex)
-			return true
+			return
 		}
-		if len(cmdparts) < 2 {
-			fmt.Println("must specify command!")
-			return true
+		if nodes[idex] == nil {
+			fmt.Printf("Node %d has already been killed.\n", idex)
 		}
 		cmd := strings.ToLower(cmdparts[1])
 		fnc, ok := commands[cmd]
@@ -108,9 +130,45 @@ func RunCommand(cmdstr string) bool {
 				fmt.Printf("Error: %s\n", err)
 			}
 		}
-
 	}
-	return true
+}
+
+func runCommandsAsync(idexlist []int, cmdparts []string, wait bool) {
+	done := make(chan struct{})
+	for _, i := range idexlist {
+		if i >= len(nodes) || i < 0 {
+			fmt.Printf("Index %d out of range!\n", i)
+			return
+		}
+		if nodes[i] == nil {
+			fmt.Printf("Node %d has already been killed.\n", i)
+		}
+	}
+	for _, idex := range idexlist {
+		if nodes[idex] == nil {
+			continue
+		}
+		go func(i int) {
+			cmd := strings.ToLower(cmdparts[1])
+			fnc, ok := commands[cmd]
+			if !ok {
+				fmt.Println("unrecognized command!")
+			} else {
+				err := fnc(i, cmdparts)
+				if err != nil {
+					fmt.Printf("Error: %s\n", err)
+				}
+			}
+			if wait {
+				done <- struct{}{}
+			}
+		}(idex)
+	}
+	if wait {
+		for _ = range idexlist {
+			<-done
+		}
+	}
 }
 
 func Expect(cmdparts []string) bool {
@@ -356,6 +414,12 @@ func FindPeer(idex int, cmdparts []string) error {
 	}
 
 	fmt.Printf("%d) Got peer: %s\n", idex, p)
+	return nil
+}
+
+func KillNode(idex int, cmdparts []string) error {
+	nodes[idex].Close()
+	nodes[idex] = nil
 	return nil
 }
 

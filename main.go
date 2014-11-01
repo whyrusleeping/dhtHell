@@ -5,6 +5,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"time"
 
 	config "github.com/jbenet/go-ipfs/config"
 	core "github.com/jbenet/go-ipfs/core"
@@ -156,6 +157,7 @@ func main() {
 	serv := flag.String("s", "", "address to run d3 viz server on")
 	rpc := flag.Bool("r", false, "whether or not to turn on rpc")
 	def := flag.Bool("default", false, "whether or not to load default config")
+	ins := flag.Bool("inspect", false, "whether or not to inspect stack afterwards")
 	flag.Parse()
 
 	setuprpc = *rpc
@@ -220,6 +222,8 @@ func main() {
 		if len(scan.Text()) == 0 {
 			continue
 		}
+
+		// ignore comments
 		if len(scan.Text()) > 0 && scan.Text()[0] == '#' {
 			continue
 		}
@@ -233,4 +237,15 @@ func main() {
 		}
 	}
 
+	fmt.Println("Cleaning up...")
+	for _, n := range nodes {
+		if n != nil {
+			n.Close()
+		}
+	}
+
+	if *ins {
+		time.Sleep(time.Second * 2)
+		panic("lets take a look at things.")
+	}
 }

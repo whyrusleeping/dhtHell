@@ -27,7 +27,7 @@ func (fi *FileInfo) GetReader() io.Reader {
 }
 
 func NewFile(name string, size int64) *FileInfo {
-	read := io.LimitReader(util.NewFastRand(), size)
+	read := io.LimitReader(util.NewTimeSeededRand(), size)
 	nd, err := imp.NewDagFromReader(read)
 	if err != nil {
 		panic(err)

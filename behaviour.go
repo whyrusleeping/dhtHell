@@ -154,7 +154,7 @@ func (b *Behaviour) AddNode() {
 }
 
 func (b *Behaviour) genData() *mdag.Node {
-	read := io.LimitReader(util.NewFastRand(), b.ValSize)
+	read := io.LimitReader(util.NewTimeSeededRand(), b.ValSize)
 	nd, err := imp.NewDagFromReader(read)
 	if err != nil {
 		panic(err)
