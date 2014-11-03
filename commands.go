@@ -424,7 +424,11 @@ func KillNode(idex int, cmdparts []string) error {
 }
 
 func GetBandwidth(idex int, cmdparts []string) error {
-	in, out := nodes[idex].Network.GetBandwidthTotals()
-	fmt.Printf("Bandwidth totals\n\tIn:  %d\n\tOut: %d\n", in, out)
+	if nodes[idex] != nil {
+		in, out := nodes[idex].Network.GetBandwidthTotals()
+		fmt.Printf("Bandwidth totals\n\tIn:  %d\n\tOut: %d\n", in, out)
+	} else {
+		fmt.Println("Attempted to get bandwidth from dead node!")
+	}
 	return nil
 }
