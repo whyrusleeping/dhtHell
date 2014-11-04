@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"fmt"
 	"net/http"
@@ -25,3 +26,4 @@ func RunServer(s string) {
 		fmt.Println(err)
 	}
 }
+*/

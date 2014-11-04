@@ -8,7 +8,6 @@ import (
 	"time"
 
 	config "github.com/jbenet/go-ipfs/config"
-	core "github.com/jbenet/go-ipfs/core"
 	u "github.com/jbenet/go-ipfs/util"
 
 	"flag"
@@ -141,20 +140,21 @@ func ConfigPrompt(scan *bufio.Scanner) error {
 
 func SetupNodes() {
 	for _, ncfg := range configs {
-		nodes = append(nodes, nodeFromConfig(ncfg))
+		nd := nodeFromConfig(ncfg)
+		controllers = append(controllers, &localNode{nd})
 	}
 	fmt.Println("Finished DHT creation.")
 }
 
 // global array of nodes, because im lazy and hate passing things to functions
-var nodes []*core.IpfsNode
+var controllers []NodeController
 var configs []*config.Config
 var setuprpc bool
 var bootstrappingSet bool
 
 func main() {
 	cmdfile := flag.String("f", "", "a file of commands to run")
-	serv := flag.String("s", "", "address to run d3 viz server on")
+	//serv := flag.String("s", "", "address to run d3 viz server on")
 	rpc := flag.Bool("r", false, "whether or not to turn on rpc")
 	def := flag.Bool("default", false, "whether or not to load default config")
 	ins := flag.Bool("inspect", false, "whether or not to inspect stack afterwards")
@@ -165,9 +165,11 @@ func main() {
 	u.Debug = true
 	runtime.GOMAXPROCS(10)
 
-	if *serv != "" {
-		go RunServer(*serv)
-	}
+	/*
+		if *serv != "" {
+			go RunServer(*serv)
+		}
+	*/
 
 	// Setup Configuration and inputs
 	var scan *bufio.Scanner
@@ -238,10 +240,8 @@ func main() {
 	}
 
 	fmt.Println("Cleaning up...")
-	for _, n := range nodes {
-		if n != nil {
-			n.Close()
-		}
+	for _, c := range controllers {
+		c.Shutdown()
 	}
 
 	if *ins {

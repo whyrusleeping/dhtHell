@@ -13,6 +13,7 @@ import (
 
 	"code.google.com/p/go.net/context"
 	b58 "github.com/jbenet/go-base58"
+	"github.com/jbenet/go-ipfs/core"
 	cmds "github.com/jbenet/go-ipfs/core/commands"
 	imp "github.com/jbenet/go-ipfs/importer"
 	"github.com/jbenet/go-ipfs/peer"
@@ -20,7 +21,38 @@ import (
 	u "github.com/jbenet/go-ipfs/util"
 )
 
-type CmdFunc func(int, []string) error
+type NodeController interface {
+	RunCommand(cmd []string) error
+	Shutdown()
+	PeerID() peer.ID
+}
+
+type localNode struct {
+	n *core.IpfsNode
+}
+
+func (l *localNode) RunCommand(cmdparts []string) error {
+	cmd := strings.ToLower(cmdparts[1])
+	fnc, ok := commands[cmd]
+	if !ok {
+		return fmt.Errorf("unrecognized command!")
+	} else {
+		return fnc(l.n, cmdparts)
+	}
+}
+
+func (l *localNode) Shutdown() {
+	if l.n != nil {
+		l.n.Close()
+		l.n = nil
+	}
+}
+
+func (l *localNode) PeerID() peer.ID {
+	return l.n.Identity.ID()
+}
+
+type CmdFunc func(*core.IpfsNode, []string) error
 
 var commands map[string]CmdFunc
 
@@ -113,22 +145,16 @@ func RunCommand(cmdstr string) bool {
 
 func runCommandsSync(idexlist []int, cmdparts []string) {
 	for _, idex := range idexlist {
-		if idex >= len(nodes) || idex < 0 {
+		if idex >= len(controllers) || idex < 0 {
 			fmt.Printf("Index %d out of range!\n", idex)
 			return
 		}
-		if nodes[idex] == nil {
+		if controllers[idex] == nil {
 			fmt.Printf("Node %d has already been killed.\n", idex)
 		}
-		cmd := strings.ToLower(cmdparts[1])
-		fnc, ok := commands[cmd]
-		if !ok {
-			fmt.Println("unrecognized command!")
-		} else {
-			err := fnc(idex, cmdparts)
-			if err != nil {
-				fmt.Printf("Error: %s\n", err)
-			}
+		err := controllers[idex].RunCommand(cmdparts)
+		if err != nil {
+			fmt.Printf("Error: %s\n", err)
 		}
 	}
 }
@@ -136,28 +162,23 @@ func runCommandsSync(idexlist []int, cmdparts []string) {
 func runCommandsAsync(idexlist []int, cmdparts []string, wait bool) {
 	done := make(chan struct{})
 	for _, i := range idexlist {
-		if i >= len(nodes) || i < 0 {
+		if i >= len(controllers) || i < 0 {
 			fmt.Printf("Index %d out of range!\n", i)
 			return
 		}
-		if nodes[i] == nil {
+		if controllers[i] == nil {
 			fmt.Printf("Node %d has already been killed.\n", i)
 		}
 	}
 	for _, idex := range idexlist {
-		if nodes[idex] == nil {
+		if controllers[idex] == nil {
+			fmt.Println("Attempted to run command on dead node!")
 			continue
 		}
 		go func(i int) {
-			cmd := strings.ToLower(cmdparts[1])
-			fnc, ok := commands[cmd]
-			if !ok {
-				fmt.Println("unrecognized command!")
-			} else {
-				err := fnc(i, cmdparts)
-				if err != nil {
-					fmt.Printf("Error: %s\n", err)
-				}
+			err := controllers[idex].RunCommand(cmdparts)
+			if err != nil {
+				fmt.Printf("Error: %s\n", err)
 			}
 			if wait {
 				done <- struct{}{}
@@ -179,7 +200,7 @@ func Expect(cmdparts []string) bool {
 	}
 
 	for _, idex := range idexlist {
-		if idex >= len(nodes) || idex < 0 {
+		if idex >= len(controllers) || idex < 0 {
 			fmt.Printf("Index %d out of range!\n", idex)
 			return false
 		}
@@ -194,17 +215,14 @@ func Expect(cmdparts []string) bool {
 				fmt.Println("Invalid args to expect get!")
 				return false
 			}
-			return AssertGet(idex, cmdparts[2], cmdparts[3])
+			//return AssertGet(idex, cmdparts[2], cmdparts[3])
+			fmt.Println("Need to fix AssertGet!")
+			return false
 		default:
-			fnc, ok := commands[cmd]
-			if !ok {
-				fmt.Println("unrecognized command!")
-			} else {
-				err := fnc(idex, cmdparts)
-				if err != nil {
-					fmt.Printf("Error: %s\n", err)
-					return false
-				}
+			err := controllers[idex].RunCommand(cmdparts)
+			if err != nil {
+				fmt.Printf("Error: %s\n", err)
+				return false
 			}
 		}
 
@@ -212,33 +230,33 @@ func Expect(cmdparts []string) bool {
 	return true
 }
 
-func Put(idex int, cmdparts []string) error {
+func Put(n *core.IpfsNode, cmdparts []string) error {
 	if len(cmdparts) < 4 {
 		fmt.Println("put: '# put key val'")
 		return ErrArgCount
 	}
 	fmt.Printf("putting value: '%s' for key '%s'\n", cmdparts[3], cmdparts[2])
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	return nodes[idex].Routing.PutValue(ctx, u.Key(cmdparts[2]), []byte(cmdparts[3]))
+	return n.Routing.PutValue(ctx, u.Key(cmdparts[2]), []byte(cmdparts[3]))
 }
 
-func Get(idex int, cmdparts []string) error {
+func Get(n *core.IpfsNode, cmdparts []string) error {
 	if len(cmdparts) < 3 {
 		fmt.Println("get: '# get key'")
 		return ErrArgCount
 	}
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	val, err := nodes[idex].Routing.GetValue(ctx, u.Key(cmdparts[2]))
+	val, err := n.Routing.GetValue(ctx, u.Key(cmdparts[2]))
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d) Got value: '%s'\n", idex, string(val))
+	fmt.Printf("Got value: '%s'\n", string(val))
 	return nil
 }
 
-func AssertGet(idex int, key, exp string) bool {
+func AssertGet(n *core.IpfsNode, key, exp string) bool {
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	val, err := nodes[idex].Routing.GetValue(ctx, u.Key(key))
+	val, err := n.Routing.GetValue(ctx, u.Key(key))
 	if err != nil {
 		fmt.Printf("Get error: %s\n", err)
 		return false
@@ -253,8 +271,8 @@ func AssertGet(idex int, key, exp string) bool {
 	return true
 }
 
-func Diag(idex int, cmdparts []string) error {
-	diag, err := nodes[idex].Diagnostics.GetDiagnostic(time.Second * 5)
+func Diag(n *core.IpfsNode, cmdparts []string) error {
+	diag, err := n.Diagnostics.GetDiagnostic(time.Second * 5)
 	if err != nil {
 		return err
 	}
@@ -276,12 +294,12 @@ func Diag(idex int, cmdparts []string) error {
 	return nil
 }
 
-func Store(idex int, cmdparts []string) error {
+func Store(n *core.IpfsNode, cmdparts []string) error {
 	if len(cmdparts) < 4 {
 		fmt.Println("store: '# store key val'")
 		return ErrArgCount
 	}
-	err := nodes[idex].Datastore.Put(u.Key(cmdparts[2]).DsKey(), []byte(cmdparts[3]))
+	err := n.Datastore.Put(u.Key(cmdparts[2]).DsKey(), []byte(cmdparts[3]))
 	if err != nil {
 		return err
 	}
@@ -289,20 +307,20 @@ func Store(idex int, cmdparts []string) error {
 	return nil
 }
 
-func Provide(idex int, cmdparts []string) error {
+func Provide(n *core.IpfsNode, cmdparts []string) error {
 	if len(cmdparts) < 3 {
 		fmt.Println("provide: '# provide key'")
 		return ErrArgCount
 	}
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	err := nodes[idex].Routing.Provide(ctx, u.Key(cmdparts[2]))
+	err := n.Routing.Provide(ctx, u.Key(cmdparts[2]))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func FindProv(idex int, cmdparts []string) error {
+func FindProv(n *core.IpfsNode, cmdparts []string) error {
 	if len(cmdparts) < 3 {
 		fmt.Println("findprov: '# findprov key [count]'")
 		return ErrArgCount
@@ -316,15 +334,15 @@ func FindProv(idex int, cmdparts []string) error {
 		}
 	}
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	pchan := nodes[idex].Routing.FindProvidersAsync(ctx, u.Key(cmdparts[2]), count)
-	fmt.Printf("%d) Providers of '%s'\n", idex, cmdparts[2])
+	pchan := n.Routing.FindProvidersAsync(ctx, u.Key(cmdparts[2]), count)
+	fmt.Printf("Providers of '%s'\n", cmdparts[2])
 	for p := range pchan {
 		fmt.Printf("\t%s\n", p)
 	}
 	return nil
 }
 
-func ReadFile(idex int, cmdparts []string) error {
+func ReadFile(n *core.IpfsNode, cmdparts []string) error {
 	if len(cmdparts) < 3 {
 		fmt.Println("readfile: '# add fileref'")
 		return ErrArgCount
@@ -337,12 +355,12 @@ func ReadFile(idex int, cmdparts []string) error {
 	}
 
 	start := time.Now()
-	nd, err := nodes[idex].DAG.Get(f.RootKey)
+	nd, err := n.DAG.Get(f.RootKey)
 	if err != nil {
 		return err
 	}
 
-	read, err := uio.NewDagReader(nd, nodes[idex].DAG)
+	read, err := uio.NewDagReader(nd, n.DAG)
 	if err != nil {
 		return err
 	}
@@ -362,7 +380,7 @@ func ReadFile(idex int, cmdparts []string) error {
 	return nil
 }
 
-func AddFile(idex int, cmdparts []string) error {
+func AddFile(n *core.IpfsNode, cmdparts []string) error {
 	if len(cmdparts) < 3 {
 		fmt.Println("addfile: '# add fileref'")
 		return ErrArgCount
@@ -379,14 +397,14 @@ func AddFile(idex int, cmdparts []string) error {
 		return err
 	}
 
-	err = nodes[idex].DAG.AddRecursive(nd)
+	err = n.DAG.AddRecursive(nd)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func FindPeer(idex int, cmdparts []string) error {
+func FindPeer(n *core.IpfsNode, cmdparts []string) error {
 	if len(cmdparts) < 3 {
 		fmt.Println("findpeer: '# findpeer peerid'")
 		return ErrArgCount
@@ -398,37 +416,35 @@ func FindPeer(idex int, cmdparts []string) error {
 		if err != nil {
 			return err
 		}
-		if n >= len(nodes) {
+		if n >= len(controllers) {
 			return errors.New("specified peernum out of range")
 		}
-		search = nodes[n].Identity.ID()
+		search = controllers[n].PeerID()
 	} else {
 		search = peer.ID(b58.Decode(cmdparts[2]))
 	}
 	fmt.Printf("Searching for peer: %s\n", search)
 
 	ctx, _ := context.WithDeadline(context.TODO(), time.Now().Add(time.Second*5))
-	p, err := nodes[idex].Routing.FindPeer(ctx, search)
+	p, err := n.Routing.FindPeer(ctx, search)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("%d) Got peer: %s\n", idex, p)
+	fmt.Printf("%Got peer: %s\n", p)
 	return nil
 }
 
-func KillNode(idex int, cmdparts []string) error {
-	nodes[idex].Close()
-	nodes[idex] = nil
-	return nil
+func KillNode(n *core.IpfsNode, cmdparts []string) error {
+	n.Close()
+
+	return errors.New("Need to kill this node!")
+	//nodes[idex] = nil
+	//return nil
 }
 
-func GetBandwidth(idex int, cmdparts []string) error {
-	if nodes[idex] != nil {
-		in, out := nodes[idex].Network.GetBandwidthTotals()
-		fmt.Printf("Bandwidth totals\n\tIn:  %d\n\tOut: %d\n", in, out)
-	} else {
-		fmt.Println("Attempted to get bandwidth from dead node!")
-	}
+func GetBandwidth(n *core.IpfsNode, cmdparts []string) error {
+	in, out := n.Network.GetBandwidthTotals()
+	fmt.Printf("Bandwidth totals\n\tIn:  %d\n\tOut: %d\n", in, out)
 	return nil
 }

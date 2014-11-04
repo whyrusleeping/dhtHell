@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"fmt"
 	"io"
@@ -95,6 +96,7 @@ func (b *Behaviour) Start() {
 	}
 }
 
+
 func (b *Behaviour) RemoveNode() {
 	fmt.Println("Removing node from behaviour!")
 	i := rand.Intn(len(b.involvedNodes))
@@ -110,7 +112,6 @@ func (b *Behaviour) RemoveNode() {
 	delete(b.involvedNodes, which)
 	b.unaddedNodes[which] = struct{}{}
 	go func(i int) {
-		/*
 			nd, err := nodes[i].DAG.Get(b.Key)
 			if err != nil {
 				fmt.Printf("Remove Node Error: %s\n", err)
@@ -121,7 +122,6 @@ func (b *Behaviour) RemoveNode() {
 				fmt.Printf("Remove Node Error: %s\n", err)
 				return
 			}
-		*/
 	}(which)
 }
 
@@ -161,3 +161,4 @@ func (b *Behaviour) genData() *mdag.Node {
 	}
 	return nd
 }
+*/
