@@ -22,8 +22,13 @@ import (
 )
 
 type NodeController interface {
+	// Run a command on this node
 	RunCommand(cmd []string) (string, error)
+
+	// Shutdown this node
 	Shutdown()
+
+	// return this nodes peer ID
 	PeerID() peer.ID
 }
 
