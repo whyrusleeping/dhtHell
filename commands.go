@@ -46,7 +46,7 @@ func (l *localNode) RunCommand(cmdparts []string) (string, error) {
 		if !success {
 			return "", errors.New("assert get failed")
 		}
-		return "assert get successful!", nil
+		return "assert get successful!\n", nil
 	}
 	fnc, ok := commands[cmd]
 	if !ok {
@@ -174,7 +174,9 @@ func runCommandsSync(idexlist []int, cmdparts []string) {
 			fmt.Printf("Node %d has already been killed.\n", idex)
 		}
 		out, err := controllers[idex].RunCommand(cmdparts)
-		fmt.Print(out)
+		if !logquiet {
+			fmt.Print(out)
+		}
 		if err != nil {
 			fmt.Printf("Error: %s\n", err)
 		}
@@ -199,7 +201,9 @@ func runCommandsAsync(idexlist []int, cmdparts []string, wait bool) {
 		}
 		go func(i int) {
 			out, err := controllers[idex].RunCommand(cmdparts)
-			fmt.Print(out)
+			if !logquiet {
+				fmt.Print(out)
+			}
 			if err != nil {
 				fmt.Printf("Error: %s\n", err)
 			}
@@ -228,7 +232,9 @@ func AssertGet(n *core.IpfsNode, key, exp string) bool {
 		return false
 	}
 
-	fmt.Println("Expectation Successful!")
+	if !logquiet {
+		fmt.Println("Expectation Successful!")
+	}
 	return true
 }
 
@@ -253,7 +259,9 @@ func Expect(cmdparts []string) bool {
 			cmdparts[1] = "expectget"
 		}
 		out, err := controllers[idex].RunCommand(cmdparts)
-		fmt.Print(out)
+		if !logquiet {
+			fmt.Print(out)
+		}
 		if err != nil {
 			fmt.Printf("Error: %s\n", err)
 			return false
