@@ -41,6 +41,13 @@ func (l *localNode) RunCommand(cmdparts []string) (string, error) {
 		return "", errors.New("Attempted to run command on dead node!")
 	}
 	cmd := strings.ToLower(cmdparts[1])
+	if cmd == "expectget" {
+		success := AssertGet(l.n, cmdparts[2], cmdparts[3])
+		if !success {
+			return "", errors.New("assert get failed")
+		}
+		return "assert get successful!", nil
+	}
 	fnc, ok := commands[cmd]
 	if !ok {
 		return "", fmt.Errorf("unrecognized command!")
@@ -242,22 +249,14 @@ func Expect(cmdparts []string) bool {
 			return false
 		}
 		cmd := strings.ToLower(cmdparts[1])
-		switch cmd {
-		case "get":
-			if len(cmdparts) < 4 {
-				fmt.Println("Invalid args to expect get!")
-				return false
-			}
-			//return AssertGet(idex, cmdparts[2], cmdparts[3])
-			fmt.Println("Need to fix AssertGet!")
+		if cmd == "get" {
+			cmdparts[1] = "expectget"
+		}
+		out, err := controllers[idex].RunCommand(cmdparts)
+		fmt.Print(out)
+		if err != nil {
+			fmt.Printf("Error: %s\n", err)
 			return false
-		default:
-			out, err := controllers[idex].RunCommand(cmdparts)
-			fmt.Print(out)
-			if err != nil {
-				fmt.Printf("Error: %s\n", err)
-				return false
-			}
 		}
 
 	}
