@@ -42,7 +42,9 @@ func GenIdentity() (string, string, error) {
 // Creates an ipfs node that listens on the given multiaddr and bootstraps to
 // the peer in 'bootstrap'
 func nodeFromConfig(cfg *config.Config) *core.IpfsNode {
-	fmt.Printf("Creating node with id: '%s'\n", cfg.Identity.PeerID)
+	if !logquiet {
+		fmt.Printf("Creating node with id: '%s'\n", cfg.Identity.PeerID)
+	}
 	node, err := core.NewIpfsNode(cfg, true)
 	if err != nil {
 		panic(err)
@@ -111,7 +113,9 @@ func BuildConfig(addr string) *config.Config {
 }
 
 func BootstrapTo(cfg *config.Config, root *config.Config) {
-	fmt.Printf("%s will connect to %s on startup.\n", cfg.Identity.PeerID, root.Identity.PeerID)
+	if !logquiet {
+		fmt.Printf("%s will connect to %s on startup.\n", cfg.Identity.PeerID, root.Identity.PeerID)
+	}
 	bsp := new(config.BootstrapPeer)
 	bsp.Address = root.Addresses.Swarm
 	bsp.PeerID = root.Identity.PeerID

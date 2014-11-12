@@ -151,6 +151,7 @@ var controllers []NodeController
 var configs []*config.Config
 var setuprpc bool
 var bootstrappingSet bool
+var logquiet bool
 
 func main() {
 	cmdfile := flag.String("f", "", "a file of commands to run")
@@ -158,7 +159,9 @@ func main() {
 	rpc := flag.Bool("r", false, "whether or not to turn on rpc")
 	def := flag.Bool("default", false, "whether or not to load default config")
 	ins := flag.Bool("inspect", false, "whether or not to inspect stack afterwards")
+	quiet := flag.Bool("q", false, "supress obnoxious log messages")
 	flag.Parse()
+	logquiet = *quiet
 
 	setuprpc = *rpc
 
