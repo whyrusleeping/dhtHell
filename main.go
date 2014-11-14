@@ -155,7 +155,7 @@ var logquiet bool
 
 func main() {
 	cmdfile := flag.String("f", "", "a file of commands to run")
-	//serv := flag.String("s", "", "address to run d3 viz server on")
+	serv := flag.String("s", "", "address to run d3 viz server on")
 	rpc := flag.Bool("r", false, "whether or not to turn on rpc")
 	def := flag.Bool("default", false, "whether or not to load default config")
 	ins := flag.Bool("inspect", false, "whether or not to inspect stack afterwards")
@@ -168,11 +168,9 @@ func main() {
 	u.Debug = true
 	runtime.GOMAXPROCS(10)
 
-	/*
-		if *serv != "" {
-			go RunServer(*serv)
-		}
-	*/
+	if *serv != "" {
+		go RunServer(*serv)
+	}
 
 	// Setup Configuration and inputs
 	var scan *bufio.Scanner

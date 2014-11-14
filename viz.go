@@ -1,10 +1,8 @@
 package main
 
-/*
 import (
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/jbenet/go-ipfs/diagnostics"
 )
@@ -15,15 +13,17 @@ func RunServer(s string) {
 		http.ServeFile(w, r, "index.html")
 	})
 	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
-		diag, err := nodes[0].Diagnostics.GetDiagnostic(time.Second * 10)
+		diag, err := controllers[0].RunCommand([]string{"0", "diag"})
 		if err != nil {
 			fmt.Println(err)
 		}
-		w.Write(diagnostics.GetGraphJson(diag))
+		_ = diag
+		fmt.Println("NOT YET IMPLEMENTED!!!")
+		var dinfo []*diagnostics.DiagInfo
+		w.Write(diagnostics.GetGraphJson(dinfo))
 	})
 	err := http.ListenAndServe(s, nil)
 	if err != nil {
 		fmt.Println(err)
 	}
 }
-*/
