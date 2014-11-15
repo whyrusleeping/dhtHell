@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/jbenet/go-ipfs/diagnostics"
 )
@@ -13,14 +14,16 @@ func RunServer(s string) {
 		http.ServeFile(w, r, "index.html")
 	})
 	http.HandleFunc("/data", func(w http.ResponseWriter, r *http.Request) {
-		diag, err := controllers[0].RunCommand([]string{"0", "diag"})
+		nd, ok := controllers[0].(*localNode)
+		if !ok {
+			fmt.Println("Invalid controller type!")
+			return
+		}
+		diag, err := nd.n.Diagnostics.GetDiagnostic(time.Second * 5)
 		if err != nil {
 			fmt.Println(err)
 		}
-		_ = diag
-		fmt.Println("NOT YET IMPLEMENTED!!!")
-		var dinfo []*diagnostics.DiagInfo
-		w.Write(diagnostics.GetGraphJson(dinfo))
+		w.Write(diagnostics.GetGraphJson(diag))
 	})
 	err := http.ListenAndServe(s, nil)
 	if err != nil {
