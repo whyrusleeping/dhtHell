@@ -240,8 +240,9 @@ func main() {
 		}
 	}
 
-	fmt.Println("Cleaning up...")
+	fmt.Println("Cleaning up and printing bandwidth(I/O)")
 	for _, c := range controllers {
+		c.PrintStatistics()
 		c.Shutdown()
 	}
 

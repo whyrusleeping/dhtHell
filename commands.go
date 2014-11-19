@@ -27,6 +27,8 @@ type NodeController interface {
 	// Shutdown this node
 	Shutdown()
 
+	PrintStatistics()
+
 	// return this nodes peer ID
 	PeerID() peer.ID
 }
@@ -57,6 +59,10 @@ func (l *localNode) RunCommand(cmdparts []string) (string, error) {
 		}
 		return out, err
 	}
+}
+
+func (l *localNode) PrintStatistics() {
+	fmt.Println(l.n.Network.GetBandwidthTotals())
 }
 
 func (l *localNode) Shutdown() {
