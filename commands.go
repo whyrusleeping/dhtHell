@@ -14,7 +14,6 @@ import (
 	"code.google.com/p/go.net/context"
 	b58 "github.com/jbenet/go-base58"
 	"github.com/jbenet/go-ipfs/core"
-	cmds "github.com/jbenet/go-ipfs/core/commands"
 	imp "github.com/jbenet/go-ipfs/importer"
 	"github.com/jbenet/go-ipfs/peer"
 	uio "github.com/jbenet/go-ipfs/unixfs/io"
@@ -311,7 +310,7 @@ func Diag(n *core.IpfsNode, cmdparts []string) (string, error) {
 			return "", err
 		}
 	} else {
-		cmds.PrintDiagnostics(diag, out)
+		fmt.Fprintln(out, diag)
 	}
 	return out.String(), nil
 }
