@@ -5,6 +5,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	config "github.com/jbenet/go-ipfs/config"
@@ -29,6 +30,25 @@ var ErrArgCount = errors.New("not enough arguments")
 type testConfig struct {
 	NumNodes int
 }
+
+type nodeBWInfo struct {
+	BwIn, BwOut      uint64
+	MesSend, MesRecv uint64
+}
+
+type transferInfo struct {
+	Size  int
+	Time  int64
+	Speed float64
+}
+
+type Statistics struct {
+	BwStats   []nodeBWInfo
+	Transfers []transferInfo
+}
+
+var gslock sync.Mutex
+var globalStats Statistics
 
 func ExecConfigLine(s string) bool {
 	if len(s) > 0 && s[0] == '#' {
@@ -242,9 +262,15 @@ func main() {
 
 	fmt.Println("Cleaning up and printing bandwidth(I/O)")
 	for _, c := range controllers {
-		c.PrintStatistics()
-		c.Shutdown()
+		globalStats.BwStats = append(globalStats.BwStats, c.GetStatistics())
+		//c.Shutdown()
 	}
+
+	gsjson, err := json.MarshalIndent(globalStats, "", "\t")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(gsjson))
 
 	if *ins {
 		time.Sleep(time.Second * 2)

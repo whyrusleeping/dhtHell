@@ -27,7 +27,7 @@ type NodeController interface {
 	// Shutdown this node
 	Shutdown()
 
-	PrintStatistics()
+	GetStatistics() nodeBWInfo
 
 	// return this nodes peer ID
 	PeerID() peer.ID
@@ -61,8 +61,13 @@ func (l *localNode) RunCommand(cmdparts []string) (string, error) {
 	}
 }
 
-func (l *localNode) PrintStatistics() {
-	fmt.Println(l.n.Network.GetBandwidthTotals())
+func (l *localNode) GetStatistics() nodeBWInfo {
+	out := nodeBWInfo{}
+	bwi, bwo := l.n.Network.GetBandwidthTotals()
+	out.BwIn = bwi
+	out.BwOut = bwo
+	out.MesRecv, out.MesSend = l.n.Network.GetMessageCounts()
+	return out
 }
 
 func (l *localNode) Shutdown() {
@@ -399,6 +404,15 @@ func ReadFile(n *core.IpfsNode, cmdparts []string) (string, error) {
 
 	took := end.Sub(start)
 	bps := float64(len(b)) / took.Seconds()
+
+	trans := transferInfo{}
+	trans.Time = took.Nanoseconds()
+	trans.Size = len(b)
+	trans.Speed = bps
+	gslock.Lock()
+	globalStats.Transfers = append(globalStats.Transfers, trans)
+	gslock.Unlock()
+
 	return fmt.Sprintf("Read File Succeeded: %f bytes per second\n", bps), nil
 }
 
