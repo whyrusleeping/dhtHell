@@ -69,3 +69,6 @@ The Sequence "==" signals to switch input over to standard in, allowing the user
 	23 get key
 	2 get key
 	==
+
+## License
+This project is under an MIT license.
