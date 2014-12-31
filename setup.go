@@ -6,19 +6,22 @@ import (
 	"strconv"
 	"strings"
 
+	"code.google.com/p/go.net/context"
+
 	"github.com/jbenet/go-ipfs/config"
 	"github.com/jbenet/go-ipfs/core"
 	"github.com/jbenet/go-ipfs/crypto"
 	u "github.com/jbenet/go-ipfs/util"
 
 	b64 "encoding/base64"
+
 	b58 "github.com/jbenet/go-base58"
 )
 
 // GenIdentity creates a random keypair and returns the associated
 // peerID and private key encoded to match config values
 func GenIdentity() (string, string, error) {
-	k, pub, err := crypto.GenerateKeyPair(crypto.RSA, 512)
+	k, pub, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 512, u.NewTimeSeededRand())
 	if err != nil {
 		return "", "", err
 	}
@@ -41,11 +44,11 @@ func GenIdentity() (string, string, error) {
 
 // Creates an ipfs node that listens on the given multiaddr and bootstraps to
 // the peer in 'bootstrap'
-func nodeFromConfig(cfg *config.Config) *core.IpfsNode {
+func nodeFromConfig(ctx context.Context, cfg *config.Config) *core.IpfsNode {
 	if !logquiet {
 		fmt.Printf("Creating node with id: '%s'\n", cfg.Identity.PeerID)
 	}
-	node, err := core.NewIpfsNode(cfg, true)
+	node, err := core.NewIpfsNode(ctx, cfg, true)
 	if err != nil {
 		panic(err)
 	}
@@ -98,7 +101,7 @@ func ParseRange(s string) ([]int, error) {
 
 func BuildConfig(addr string) *config.Config {
 	cfg := new(config.Config)
-	cfg.Addresses.Swarm = addr
+	cfg.Addresses.Swarm = []string{addr}
 	cfg.Datastore.Type = "memory"
 
 	id, priv, err := GenIdentity()
@@ -117,7 +120,7 @@ func BootstrapTo(cfg *config.Config, root *config.Config) {
 		fmt.Printf("%s will connect to %s on startup.\n", cfg.Identity.PeerID, root.Identity.PeerID)
 	}
 	bsp := new(config.BootstrapPeer)
-	bsp.Address = root.Addresses.Swarm
+	bsp.Address = root.Addresses.Swarm[0]
 	bsp.PeerID = root.Identity.PeerID
 	cfg.Bootstrap = append(cfg.Bootstrap, bsp)
 }

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"code.google.com/p/go.net/context"
+
 	config "github.com/jbenet/go-ipfs/config"
 	u "github.com/jbenet/go-ipfs/util"
 
@@ -158,9 +160,9 @@ func ConfigPrompt(scan *bufio.Scanner) error {
 	return nil
 }
 
-func SetupNodes() {
+func SetupNodes(master context.Context) {
 	for _, ncfg := range configs {
-		nd := nodeFromConfig(ncfg)
+		nd := nodeFromConfig(master, ncfg)
 		controllers = append(controllers, &localNode{nd})
 	}
 	fmt.Println("Finished DHT creation.")
@@ -218,8 +220,10 @@ func main() {
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.TODO())
+
 	// Build ipfs nodes as specified by the global array of configurations
-	SetupNodes()
+	SetupNodes(ctx)
 
 	defer func() {
 		fi, err := os.Create("mem.prof")
@@ -260,10 +264,10 @@ func main() {
 		}
 	}
 
+	cancel()
 	fmt.Println("Cleaning up and printing bandwidth(I/O)")
 	for _, c := range controllers {
 		globalStats.BwStats = append(globalStats.BwStats, c.GetStatistics())
-		//c.Shutdown()
 	}
 
 	gsjson, err := json.MarshalIndent(globalStats, "", "\t")

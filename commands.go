@@ -63,10 +63,10 @@ func (l *localNode) RunCommand(cmdparts []string) (string, error) {
 
 func (l *localNode) GetStatistics() nodeBWInfo {
 	out := nodeBWInfo{}
-	bwi, bwo := l.n.Network.GetBandwidthTotals()
+	bwi, bwo := l.n.Network.BandwidthTotals()
 	out.BwIn = bwi
 	out.BwOut = bwo
-	out.MesRecv, out.MesSend = l.n.Network.GetMessageCounts()
+	//out.MesRecv, out.MesSend = l.n.Network.GetMessageCounts()
 	return out
 }
 
@@ -78,7 +78,7 @@ func (l *localNode) Shutdown() {
 }
 
 func (l *localNode) PeerID() peer.ID {
-	return l.n.Identity.ID()
+	return l.n.Identity
 }
 
 // A command func takes a node and a command to run on it
@@ -475,6 +475,6 @@ func KillNode(n *core.IpfsNode, cmdparts []string) (string, error) {
 }
 
 func GetBandwidth(n *core.IpfsNode, cmdparts []string) (string, error) {
-	in, out := n.Network.GetBandwidthTotals()
+	in, out := n.Network.BandwidthTotals()
 	return fmt.Sprintf("Bandwidth totals\n\tIn:  %d\n\tOut: %d\n", in, out), nil
 }
