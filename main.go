@@ -127,7 +127,7 @@ out:
 
 func SetupNConfigs(c *testConfig) {
 	for i := 0; i < c.NumNodes; i++ {
-		ncfg := BuildConfig(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 5000+i))
+		ncfg := BuildConfig(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 10000+i))
 		if setuprpc {
 			ncfg.Addresses.API = fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 9000+i)
 		}
