@@ -4,4 +4,4 @@
 @test make 100000
 2 add test
 3 readfile test
-3 diag json
+3 diag d3

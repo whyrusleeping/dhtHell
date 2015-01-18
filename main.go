@@ -79,6 +79,21 @@ func ExecConfigLine(s string) bool {
 			}
 		}
 		bootstrappingSet = true
+	} else if strings.HasPrefix(s, "off") {
+		parts := strings.Split(s, " ")
+		if len(parts) < 2 {
+			fmt.Printf("Syntax error, no range given!\n")
+			return false
+		}
+		rng, err := ParseRange(parts[1])
+		if err != nil {
+			fmt.Printf("Syntax error: %s\n", err)
+			return false
+		}
+
+		for _, v := range rng {
+			disabledAtStart[v] = true
+		}
 	} else {
 		fmt.Printf("Invalid Syntax for setup: '%s'\n", s)
 		return false
@@ -126,6 +141,7 @@ out:
 }
 
 func SetupNConfigs(c *testConfig) {
+	disabledAtStart = make([]bool, c.NumNodes)
 	for i := 0; i < c.NumNodes; i++ {
 		ncfg := BuildConfig(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 10000+i))
 		if setuprpc {
@@ -161,9 +177,12 @@ func ConfigPrompt(scan *bufio.Scanner) error {
 }
 
 func SetupNodes(master context.Context) {
-	for _, ncfg := range configs {
-		nd := nodeFromConfig(master, ncfg)
-		controllers = append(controllers, &localNode{nd})
+	controllers = make([]NodeController, len(configs))
+	for i, ncfg := range configs {
+		if !disabledAtStart[i] {
+			nd := nodeFromConfig(master, ncfg)
+			controllers[i] = &localNode{nd}
+		}
 	}
 	fmt.Println("Finished DHT creation.")
 }
@@ -171,9 +190,11 @@ func SetupNodes(master context.Context) {
 // global array of nodes, because im lazy and hate passing things to functions
 var controllers []NodeController
 var configs []*config.Config
+var disabledAtStart []bool
 var setuprpc bool
 var bootstrappingSet bool
 var logquiet bool
+var masterCtx context.Context
 
 func main() {
 	cmdfile := flag.String("f", "", "a file of commands to run")
@@ -221,6 +242,7 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.TODO())
+	masterCtx = ctx
 
 	// Build ipfs nodes as specified by the global array of configurations
 	SetupNodes(ctx)
@@ -266,15 +288,17 @@ func main() {
 
 	cancel()
 	fmt.Println("Cleaning up and printing bandwidth(I/O)")
-	for _, c := range controllers {
-		globalStats.BwStats = append(globalStats.BwStats, c.GetStatistics())
-	}
+	/*
+		for _, c := range controllers {
+			globalStats.BwStats = append(globalStats.BwStats, c.GetStatistics())
+		}
 
-	gsjson, err := json.MarshalIndent(globalStats, "", "\t")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(gsjson))
+		gsjson, err := json.MarshalIndent(globalStats, "", "\t")
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(gsjson))
+	*/
 
 	if *ins {
 		time.Sleep(time.Second * 2)

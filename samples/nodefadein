@@ -1,0 +1,13 @@
+20
+[3-19]->[0-2]
+off [10-19]
+--
+@myfile make 2000000
+4 add myfile
+5 readfile myfile
+[10-12] start
+11 readfile myfile
+[13-19] start
+17 readfile myfile
+sleep 1
+4 diag d3

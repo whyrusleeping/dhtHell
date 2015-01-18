@@ -167,6 +167,11 @@ func RunCommand(cmdstr string) bool {
 		return true
 	}
 
+	if cmdparts[1] == "start" {
+		StartNodes(idexlist)
+		return true
+	}
+
 	if async {
 		runCommandsAsync(idexlist, cmdparts, false)
 	} else {
@@ -174,6 +179,16 @@ func RunCommand(cmdstr string) bool {
 	}
 
 	return true
+}
+
+func StartNodes(idexlist []int) {
+	for _, i := range idexlist {
+		if controllers[i] != nil {
+			fmt.Printf("ERROR: node %d already started.\n", i)
+			continue
+		}
+		controllers[i] = &localNode{nodeFromConfig(masterCtx, configs[i])}
+	}
 }
 
 func runCommandsSync(idexlist []int, cmdparts []string) {
@@ -320,11 +335,13 @@ func Diag(n *core.IpfsNode, cmdparts []string) (string, error) {
 		if _, err := out.Write(b); err != nil {
 			return "", err
 		}
+		out.Write([]byte("\n"))
 	case format == "json":
 		enc := json.NewEncoder(out)
 		if err := enc.Encode(diag); err != nil {
 			return "", err
 		}
+		out.Write([]byte("\n"))
 	default:
 		fmt.Fprintln(out, diag)
 	}
