@@ -14,7 +14,6 @@ import (
 	"code.google.com/p/go.net/context"
 	b58 "github.com/jbenet/go-base58"
 	"github.com/jbenet/go-ipfs/core"
-	diagnostics "github.com/jbenet/go-ipfs/diagnostics"
 	imp "github.com/jbenet/go-ipfs/importer"
 	chunk "github.com/jbenet/go-ipfs/importer/chunk"
 	"github.com/jbenet/go-ipfs/p2p/peer"
