@@ -14,8 +14,10 @@ import (
 	"code.google.com/p/go.net/context"
 	b58 "github.com/jbenet/go-base58"
 	"github.com/jbenet/go-ipfs/core"
+	diagnostics "github.com/jbenet/go-ipfs/diagnostics"
 	imp "github.com/jbenet/go-ipfs/importer"
-	"github.com/jbenet/go-ipfs/peer"
+	chunk "github.com/jbenet/go-ipfs/importer/chunk"
+	"github.com/jbenet/go-ipfs/p2p/peer"
 	uio "github.com/jbenet/go-ipfs/unixfs/io"
 	u "github.com/jbenet/go-ipfs/util"
 )
@@ -63,9 +65,9 @@ func (l *localNode) RunCommand(cmdparts []string) (string, error) {
 
 func (l *localNode) GetStatistics() nodeBWInfo {
 	out := nodeBWInfo{}
-	bwi, bwo := l.n.Network.BandwidthTotals()
-	out.BwIn = bwi
-	out.BwOut = bwo
+	//bwi, bwo := l.n.Network.BandwidthTotals()
+	//out.BwIn = bwi
+	//out.BwOut = bwo
 	//out.MesRecv, out.MesSend = l.n.Network.GetMessageCounts()
 	return out
 }
@@ -383,6 +385,10 @@ func ReadFile(n *core.IpfsNode, cmdparts []string) (string, error) {
 		return fmt.Sprintf("No such file: %s\n", cmdparts[2]), u.ErrNotFound
 	}
 
+	if f.RootKey == "" {
+		return "", errors.New("file hasnt been added by anyone else")
+	}
+
 	start := time.Now()
 	nd, err := n.DAG.Get(f.RootKey)
 	if err != nil {
@@ -426,9 +432,17 @@ func AddFile(n *core.IpfsNode, cmdparts []string) (string, error) {
 		return fmt.Sprintf("No such file: %s\n", cmdparts[2]), u.ErrNotFound
 	}
 
-	nd, err := imp.NewDagFromReader(f.GetReader())
+	nd, err := imp.BuildDagFromReader(f.GetReader(), n.DAG, n.Pinning.GetManual(), chunk.DefaultSplitter)
 	if err != nil {
 		return "", err
+	}
+
+	if f.RootKey == "" {
+		k, err := nd.Key()
+		if err != nil {
+			return "", err
+		}
+		f.RootKey = k
 	}
 
 	err = n.DAG.AddRecursive(nd)
@@ -475,6 +489,7 @@ func KillNode(n *core.IpfsNode, cmdparts []string) (string, error) {
 }
 
 func GetBandwidth(n *core.IpfsNode, cmdparts []string) (string, error) {
-	in, out := n.Network.BandwidthTotals()
+	//in, out := n.Network.BandwidthTotals()
+	in, out := -1, -1
 	return fmt.Sprintf("Bandwidth totals\n\tIn:  %d\n\tOut: %d\n", in, out), nil
 }

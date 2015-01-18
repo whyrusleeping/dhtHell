@@ -1,0 +1,7 @@
+5
+[2-4]->[0-1]
+--
+@test make 100000
+2 add test
+3 readfile test
+3 diag json

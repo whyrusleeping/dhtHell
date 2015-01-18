@@ -10,7 +10,7 @@ import (
 
 	"code.google.com/p/go.net/context"
 
-	config "github.com/jbenet/go-ipfs/config"
+	config "github.com/jbenet/go-ipfs/repo/config"
 	u "github.com/jbenet/go-ipfs/util"
 
 	"flag"

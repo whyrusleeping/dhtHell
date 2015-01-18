@@ -8,9 +8,9 @@ import (
 
 	"code.google.com/p/go.net/context"
 
-	"github.com/jbenet/go-ipfs/config"
 	"github.com/jbenet/go-ipfs/core"
-	"github.com/jbenet/go-ipfs/crypto"
+	"github.com/jbenet/go-ipfs/p2p/crypto"
+	"github.com/jbenet/go-ipfs/repo/config"
 	u "github.com/jbenet/go-ipfs/util"
 
 	b64 "encoding/base64"
@@ -48,7 +48,8 @@ func nodeFromConfig(ctx context.Context, cfg *config.Config) *core.IpfsNode {
 	if !logquiet {
 		fmt.Printf("Creating node with id: '%s'\n", cfg.Identity.PeerID)
 	}
-	node, err := core.NewIpfsNode(ctx, cfg, true)
+
+	node, err := core.NewIPFSNode(ctx, core.Online(cfg))
 	if err != nil {
 		panic(err)
 	}
@@ -119,7 +120,7 @@ func BootstrapTo(cfg *config.Config, root *config.Config) {
 	if !logquiet {
 		fmt.Printf("%s will connect to %s on startup.\n", cfg.Identity.PeerID, root.Identity.PeerID)
 	}
-	bsp := new(config.BootstrapPeer)
+	bsp := config.BootstrapPeer{}
 	bsp.Address = root.Addresses.Swarm[0]
 	bsp.PeerID = root.Identity.PeerID
 	cfg.Bootstrap = append(cfg.Bootstrap, bsp)
