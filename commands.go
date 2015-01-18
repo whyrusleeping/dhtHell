@@ -14,6 +14,7 @@ import (
 	"code.google.com/p/go.net/context"
 	b58 "github.com/jbenet/go-base58"
 	"github.com/jbenet/go-ipfs/core"
+	diagnostics "github.com/jbenet/go-ipfs/diagnostics"
 	imp "github.com/jbenet/go-ipfs/importer"
 	chunk "github.com/jbenet/go-ipfs/importer/chunk"
 	"github.com/jbenet/go-ipfs/p2p/peer"
@@ -308,20 +309,23 @@ func Diag(n *core.IpfsNode, cmdparts []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var jsonout bool
-	if len(cmdparts) == 3 {
-		if cmdparts[2] == "json" {
-			jsonout = true
-		}
-	}
 	out := new(bytes.Buffer)
-	if jsonout {
-		enc := json.NewEncoder(out)
-		err := enc.Encode(diag)
-		if err != nil {
+	var format string
+	if len(cmdparts) > 2 {
+		format = cmdparts[2]
+	}
+	switch {
+	case format == "d3":
+		b := diagnostics.GetGraphJson(diag)
+		if _, err := out.Write(b); err != nil {
 			return "", err
 		}
-	} else {
+	case format == "json":
+		enc := json.NewEncoder(out)
+		if err := enc.Encode(diag); err != nil {
+			return "", err
+		}
+	default:
 		fmt.Fprintln(out, diag)
 	}
 	return out.String(), nil
